@@ -1,7 +1,8 @@
 import { DateTime } from 'luxon'
-import { BaseModel, column, belongsTo, beforeCreate } from '@adonisjs/lucid/orm'
-import type { BelongsTo } from '@adonisjs/lucid/types/relations'
+import { BaseModel, column, belongsTo, hasMany, beforeCreate } from '@adonisjs/lucid/orm'
+import type { BelongsTo, HasMany } from '@adonisjs/lucid/types/relations'
 import User from '#models/user'
+import Asset from '#models/asset'
 import { randomUUID } from 'node:crypto'
 
 export default class Property extends BaseModel {
@@ -18,8 +19,14 @@ export default class Property extends BaseModel {
   @column()
   declare description: string | null
 
-  @column()
+  @column({
+    serialize: (value: string[] | null) => value,
+    prepare: (value: string[] | null) => JSON.stringify(value)
+  })
   declare categories: string[] | null
+
+  @column()
+  declare listingType: 'sale' | 'rent'
 
   @column()
   declare listingStatus: 'active' | 'sold' | 'processing'
@@ -111,15 +118,18 @@ export default class Property extends BaseModel {
   declare ownerNotes: string | null
 
   // Amenities
-  @column()
+  @column({
+    serialize: (value: string[] | null) => value,
+    prepare: (value: string[] | null) => JSON.stringify(value)
+  })
   declare amenities: string[] | null
 
-  // Media
-  @column()
-  declare images: string[] | null
+  // Media - Now handled by assets relationship
+  // @column()
+  // declare images: string[] | null
 
-  @column()
-  declare videos: string[] | null
+  // @column()
+  // declare videos: string[] | null
 
   @column()
   declare virtualTourUrl: string | null
@@ -151,6 +161,9 @@ export default class Property extends BaseModel {
   @belongsTo(() => User)
   declare user: BelongsTo<typeof User>
 
+  @hasMany(() => Asset)
+  declare assets: HasMany<typeof Asset>
+
   // Computed properties
   get fullAddress() {
     const parts = [this.address, this.city, this.state, this.zip].filter(Boolean)
@@ -172,5 +185,18 @@ export default class Property extends BaseModel {
 
   static featured = (query: any) => {
     return query.where('is_featured', true)
+  }
+
+  // Helper methods for assets
+  async getImages() {
+    return Asset.getPropertyImages(this.id)
+  }
+
+  async getVideos() {
+    return Asset.getPropertyVideos(this.id)
+  }
+
+  async getFeaturedImage() {
+    return Asset.getFeaturedImage(this.id)
   }
 }

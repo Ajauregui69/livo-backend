@@ -42,10 +42,12 @@ router.group(() => {
   
   // Protected routes (auth required)
   router.group(() => {
+    router.post('/properties/test', '#controllers/properties_controller.test')
     router.post('/properties', '#controllers/properties_controller.store')
     router.put('/properties/:id', '#controllers/properties_controller.update')
     router.delete('/properties/:id', '#controllers/properties_controller.destroy')
     router.get('/my-properties', '#controllers/properties_controller.myProperties')
+    router.post('/upload', '#controllers/assets_controller.uploadMedia')
   }).use(middleware.auth())
   
 }).prefix('/api')
