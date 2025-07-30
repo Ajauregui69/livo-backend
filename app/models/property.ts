@@ -3,6 +3,7 @@ import { BaseModel, column, belongsTo, hasMany, beforeCreate } from '@adonisjs/l
 import type { BelongsTo, HasMany } from '@adonisjs/lucid/types/relations'
 import User from '#models/user'
 import Asset from '#models/asset'
+import Agent from '#models/agent'
 import { randomUUID } from 'node:crypto'
 
 export default class Property extends BaseModel {
@@ -11,6 +12,13 @@ export default class Property extends BaseModel {
 
   @column()
   declare userId: string
+
+  @column({ 
+    columnName: 'agent_id',
+    serialize: (value: string | null | undefined) => value || null,
+    prepare: (value: string | null | undefined) => value || null
+  })
+  declare agentId: string | null
 
   // Property Description
   @column()
@@ -155,11 +163,21 @@ export default class Property extends BaseModel {
     if (!property.id) {
       property.id = randomUUID()
     }
+    // Ensure agentId is null if not set
+    if (property.agentId === undefined) {
+      property.agentId = null
+    }
   }
 
   // Relationships
   @belongsTo(() => User)
   declare user: BelongsTo<typeof User>
+
+  @belongsTo(() => Agent, {
+    foreignKey: 'agentId',
+    localKey: 'id'
+  })
+  declare agent: BelongsTo<typeof Agent>
 
   @hasMany(() => Asset)
   declare assets: HasMany<typeof Asset>

@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node ace make:migration:*)",
+      "Bash(node ace migration:run:*)"
+    ],
+    "deny": []
+  }
+}

@@ -18,10 +18,14 @@ export default class PropertiesController {
       const bathrooms = request.input('bathrooms')
       const city = request.input('city')
       const featured = request.input('featured')
+      const agentId = request.input('agent_id')
 
       let query = Property.query()
         .preload('user', (userQuery) => {
           userQuery.select(['id', 'firstName', 'lastName', 'email', 'phone', 'role'])
+        })
+        .preload('agent', (agentQuery) => {
+          agentQuery.select(['id', 'name', 'email', 'phone1', 'phone2', 'company', 'image'])
         })
         .preload('assets', (assetQuery) => {
           assetQuery.orderBy('sort_order', 'asc').orderBy('created_at', 'asc')
@@ -65,6 +69,10 @@ export default class PropertiesController {
         query = query.where('is_featured', true)
       }
 
+      if (agentId) {
+        query = query.where('agent_id', agentId)
+      }
+
       // Only show published and active properties for public
       query = query.where('property_status', 'published').where('listing_status', 'active')
 
@@ -72,13 +80,13 @@ export default class PropertiesController {
 
       return response.ok({
         success: true,
-        data: properties
+        data: properties,
       })
     } catch (error) {
       return response.internalServerError({
         success: false,
         message: 'Error fetching properties',
-        error: error.message
+        error: error.message,
       })
     }
   }
@@ -91,6 +99,9 @@ export default class PropertiesController {
         .preload('user', (userQuery) => {
           userQuery.select(['id', 'firstName', 'lastName', 'email', 'phone', 'role', 'companyName'])
         })
+        .preload('agent', (agentQuery) => {
+          agentQuery.select(['id', 'name', 'email', 'phone1', 'phone2', 'company', 'image'])
+        })
         .preload('assets', (assetQuery) => {
           assetQuery.orderBy('sort_order', 'asc').orderBy('created_at', 'asc')
         })
@@ -99,7 +110,7 @@ export default class PropertiesController {
       if (!property) {
         return response.notFound({
           success: false,
-          message: 'Property not found'
+          message: 'Property not found',
         })
       }
 
@@ -111,24 +122,27 @@ export default class PropertiesController {
       console.log('Property ID:', property.id)
       console.log('Assets count:', property.assets?.length || 0)
       if (property.assets && property.assets.length > 0) {
-        console.log('Assets:', property.assets.map(asset => ({ 
-          id: asset.id, 
-          type: asset.type, 
-          fileUrl: asset.fileUrl, 
-          sortOrder: asset.sortOrder 
-        })))
+        console.log(
+          'Assets:',
+          property.assets.map((asset) => ({
+            id: asset.id,
+            type: asset.type,
+            fileUrl: asset.fileUrl,
+            sortOrder: asset.sortOrder,
+          }))
+        )
       }
       console.log('===========================')
 
       return response.ok({
         success: true,
-        data: property
+        data: property,
       })
     } catch (error) {
       return response.internalServerError({
         success: false,
         message: 'Error fetching property',
-        error: error.message
+        error: error.message,
       })
     }
   }
@@ -140,23 +154,23 @@ export default class PropertiesController {
       console.log('User:', user)
       console.log('Request body:', request.body())
       console.log('Request all:', request.all())
-      
+
       // Simple validation
       const simpleValidator = vine.compile(
         vine.object({
           title: vine.string(),
           address: vine.string(),
-          price: vine.number()
+          price: vine.number(),
         })
       )
-      
+
       const payload = await request.validateUsing(simpleValidator)
       console.log('Simple validation passed:', payload)
-      
+
       return response.ok({
         success: true,
         message: 'Test successful',
-        data: { user: user.id, payload }
+        data: { user: user.id, payload },
       })
     } catch (error) {
       console.error('Test error:', error)
@@ -164,7 +178,7 @@ export default class PropertiesController {
         success: false,
         message: 'Test failed',
         error: error.message,
-        details: error.messages || null
+        details: error.messages || null,
       })
     }
   }
@@ -173,7 +187,7 @@ export default class PropertiesController {
   async store({ request, response, auth }: HttpContext) {
     try {
       const user = auth.getUserOrFail()
-      
+
       // Debug: Log the incoming request data
       console.log('Request body:', request.body())
       console.log('Request all:', request.all())
@@ -184,7 +198,7 @@ export default class PropertiesController {
           title: vine.string().minLength(3).maxLength(255),
           address: vine.string().minLength(5),
           price: vine.number().min(0),
-          
+
           // Optional fields - make them more lenient
           description: vine.string().optional().nullable(),
           categories: vine.array(vine.string()).optional().nullable(),
@@ -193,7 +207,7 @@ export default class PropertiesController {
           propertyStatus: vine.enum(['pending', 'processing', 'published']).optional().nullable(),
           yearlyTaxRate: vine.number().min(0).optional(),
           afterPriceLabel: vine.string().optional().nullable(),
-          
+
           // Location
           city: vine.string().optional().nullable(),
           state: vine.string().optional().nullable(),
@@ -202,7 +216,7 @@ export default class PropertiesController {
           neighborhood: vine.string().optional().nullable(),
           latitude: vine.number().optional().nullable(),
           longitude: vine.number().optional().nullable(),
-          
+
           // Details
           sizeSqft: vine.number().min(0).optional(),
           lotSizeSqft: vine.number().min(0).optional(),
@@ -212,7 +226,11 @@ export default class PropertiesController {
           customId: vine.string().optional().nullable(),
           garages: vine.number().min(0).optional(),
           garageSize: vine.string().optional().nullable(),
-          yearBuilt: vine.number().min(1800).max(new Date().getFullYear() + 5).optional(),
+          yearBuilt: vine
+            .number()
+            .min(1800)
+            .max(new Date().getFullYear() + 5)
+            .optional(),
           availableFrom: vine.date().optional(),
           basement: vine.string().optional().nullable(),
           extraDetails: vine.string().optional().nullable(),
@@ -220,16 +238,16 @@ export default class PropertiesController {
           exteriorMaterial: vine.string().optional().nullable(),
           structureType: vine.string().optional().nullable(),
           ownerNotes: vine.string().optional().nullable(),
-          
+
           // Amenities and media
           amenities: vine.array(vine.string()).optional().nullable(),
-          images: vine.array(vine.string()).optional().nullable(), // Keep for temporary compatibility
+          images: vine.array(vine.any()).optional().nullable(),
           videos: vine.array(vine.string()).optional().nullable(), // Keep for temporary compatibility
           virtualTourUrl: vine.string().optional().nullable(),
-          
+
           // Additional
           isFeatured: vine.boolean().optional().nullable(),
-          mlsNumber: vine.string().optional().nullable()
+          mlsNumber: vine.string().optional().nullable(),
         })
       )
 
@@ -243,21 +261,35 @@ export default class PropertiesController {
       // Create the property first (without JSON image/video fields)
       const property = await Property.create({
         userId: user.id,
-        ...propertyData
+        ...propertyData,
       })
 
       // Create asset records for images and videos (skip blob URLs)
       if (images && images.length > 0) {
-        let validImageIndex = 0;
+        let validImageIndex = 0
         for (let i = 0; i < images.length; i++) {
-          const imageUrl = images[i];
+          const image = images[i]
           
-          // Skip blob URLs - they don't work
-          if (typeof imageUrl === 'string' && imageUrl.startsWith('blob:')) {
-            console.log(`Skipping blob URL: ${imageUrl}`);
-            continue;
+          // Handle both legacy string format and new object format
+          let imageUrl: string
+          let floorLabel: string = 'ground-floor'
+          
+          if (typeof image === 'string') {
+            imageUrl = image
+          } else if (image && typeof image === 'object' && 'url' in image) {
+            imageUrl = image.url
+            floorLabel = image.floorLabel || 'ground-floor'
+          } else {
+            console.log(`Invalid image format: ${JSON.stringify(image)}`)
+            continue
           }
-          
+
+          // Skip blob URLs - they don't work
+          if (imageUrl.startsWith('blob:')) {
+            console.log(`Skipping blob URL: ${imageUrl}`)
+            continue
+          }
+
           await Asset.create({
             propertyId: property.id,
             type: 'image',
@@ -265,32 +297,35 @@ export default class PropertiesController {
             filePath: imageUrl,
             fileUrl: imageUrl, // Store as URL for now
             sortOrder: validImageIndex,
-            isFeatured: validImageIndex === 0 // First valid image is featured
+            isFeatured: validImageIndex === 0, // First valid image is featured
+            metadata: {
+              floorLabel: floorLabel
+            }
           })
-          validImageIndex++;
+          validImageIndex++
         }
       }
 
       if (videos && videos.length > 0) {
-        let validVideoIndex = 0;
+        let validVideoIndex = 0
         for (let i = 0; i < videos.length; i++) {
-          const videoUrl = videos[i];
-          
+          const videoUrl = videos[i]
+
           // Skip blob URLs - they don't work
           if (typeof videoUrl === 'string' && videoUrl.startsWith('blob:')) {
-            console.log(`Skipping blob video URL: ${videoUrl}`);
-            continue;
+            console.log(`Skipping blob video URL: ${videoUrl}`)
+            continue
           }
-          
+
           await Asset.create({
             propertyId: property.id,
             type: 'video',
             fileName: `temp_video_${validVideoIndex + 1}`, // Temporary filename
             filePath: videoUrl,
             fileUrl: videoUrl, // Store as URL for now
-            sortOrder: validVideoIndex
+            sortOrder: validVideoIndex,
           })
-          validVideoIndex++;
+          validVideoIndex++
         }
       }
 
@@ -301,7 +336,7 @@ export default class PropertiesController {
       return response.created({
         success: true,
         message: 'Property created successfully',
-        data: property
+        data: property,
       })
     } catch (error) {
       console.error('Error in store method:', error)
@@ -310,7 +345,7 @@ export default class PropertiesController {
         success: false,
         message: 'Error creating property',
         error: error.message,
-        details: error.messages || null
+        details: error.messages || null,
       })
     }
   }
@@ -326,7 +361,7 @@ export default class PropertiesController {
       if (property.userId !== user.id && user.role !== 'admin') {
         return response.forbidden({
           success: false,
-          message: 'You are not authorized to update this property'
+          message: 'You are not authorized to update this property',
         })
       }
 
@@ -341,7 +376,7 @@ export default class PropertiesController {
           price: vine.number().min(0).optional(),
           yearlyTaxRate: vine.number().min(0).optional(),
           afterPriceLabel: vine.string().optional(),
-          
+
           // Location
           address: vine.string().minLength(5).optional(),
           city: vine.string().optional(),
@@ -351,7 +386,7 @@ export default class PropertiesController {
           neighborhood: vine.string().optional(),
           latitude: vine.number().optional(),
           longitude: vine.number().optional(),
-          
+
           // Details
           sizeSqft: vine.number().min(0).optional(),
           lotSizeSqft: vine.number().min(0).optional(),
@@ -361,7 +396,11 @@ export default class PropertiesController {
           customId: vine.string().optional(),
           garages: vine.number().min(0).optional(),
           garageSize: vine.string().optional(),
-          yearBuilt: vine.number().min(1800).max(new Date().getFullYear() + 5).optional(),
+          yearBuilt: vine
+            .number()
+            .min(1800)
+            .max(new Date().getFullYear() + 5)
+            .optional(),
           availableFrom: vine.date().optional(),
           basement: vine.string().optional(),
           extraDetails: vine.string().optional(),
@@ -369,21 +408,21 @@ export default class PropertiesController {
           exteriorMaterial: vine.string().optional(),
           structureType: vine.string().optional(),
           ownerNotes: vine.string().optional(),
-          
+
           // Amenities and media
           amenities: vine.array(vine.string()).optional(),
-          images: vine.array(vine.string()).optional().nullable(),
+          images: vine.array(vine.any()).optional().nullable(),
           videos: vine.array(vine.string()).optional().nullable(),
           virtualTourUrl: vine.string().optional().nullable(),
-          
+
           // Additional
           isFeatured: vine.boolean().optional(),
-          mlsNumber: vine.string().optional()
+          mlsNumber: vine.string().optional(),
         })
       )
 
       const payload = await request.validateUsing(updatePropertyValidator)
-      
+
       // DEBUG: Log what we're receiving
       console.log('=== UPDATE PROPERTY DEBUG ===')
       console.log('Raw request body:', request.body())
@@ -406,24 +445,41 @@ export default class PropertiesController {
         console.log('=== UPDATING IMAGES ===')
         console.log('Images received:', images)
         console.log('Number of images:', images ? images.length : 0)
-        
+
         // Delete existing image assets
-        const deletedImages = await Asset.query().where('property_id', property.id).where('type', 'image').delete()
+        const deletedImages = await Asset.query()
+          .where('property_id', property.id)
+          .where('type', 'image')
+          .delete()
         console.log('Deleted existing images:', deletedImages)
-        
+
         // Create new image assets (skip blob URLs)
         if (images && images.length > 0) {
-          let validImageIndex = 0;
+          let validImageIndex = 0
           for (let i = 0; i < images.length; i++) {
-            const imageUrl = images[i];
+            const image = images[i]
             
-            // Skip blob URLs - they don't work
-            if (typeof imageUrl === 'string' && imageUrl.startsWith('blob:')) {
-              console.log(`Skipping blob URL: ${imageUrl}`);
-              continue;
+            // Handle both legacy string format and new object format
+            let imageUrl: string
+            let floorLabel: string = 'ground-floor'
+            
+            if (typeof image === 'string') {
+              imageUrl = image
+            } else if (image && typeof image === 'object' && 'url' in image) {
+              imageUrl = image.url
+              floorLabel = image.floorLabel || 'ground-floor'
+            } else {
+              console.log(`Invalid image format: ${JSON.stringify(image)}`)
+              continue
             }
-            
-            console.log(`Creating image asset with URL: ${imageUrl}`)
+
+            // Skip blob URLs - they don't work
+            if (imageUrl.startsWith('blob:')) {
+              console.log(`Skipping blob URL: ${imageUrl}`)
+              continue
+            }
+
+            console.log(`Creating image asset with URL: ${imageUrl}, floor: ${floorLabel}`)
             const newAsset = await Asset.create({
               propertyId: property.id,
               type: 'image',
@@ -431,10 +487,13 @@ export default class PropertiesController {
               filePath: imageUrl,
               fileUrl: imageUrl, // Store as URL for now
               sortOrder: validImageIndex,
-              isFeatured: validImageIndex === 0 // First valid image is featured
+              isFeatured: validImageIndex === 0, // First valid image is featured
+              metadata: {
+                floorLabel: floorLabel
+              }
             })
             console.log(`Created image asset ${validImageIndex + 1}:`, newAsset.toJSON())
-            validImageIndex++;
+            validImageIndex++
           }
         }
         console.log('=== END UPDATING IMAGES ===')
@@ -447,32 +506,35 @@ export default class PropertiesController {
         console.log('=== UPDATING VIDEOS ===')
         console.log('Videos received:', videos)
         console.log('Number of videos:', videos ? videos.length : 0)
-        
+
         // Delete existing video assets
-        const deletedVideos = await Asset.query().where('property_id', property.id).where('type', 'video').delete()
+        const deletedVideos = await Asset.query()
+          .where('property_id', property.id)
+          .where('type', 'video')
+          .delete()
         console.log('Deleted existing videos:', deletedVideos)
-        
+
         // Create new video assets (skip blob URLs)
         if (videos && videos.length > 0) {
-          let validVideoIndex = 0;
+          let validVideoIndex = 0
           for (let i = 0; i < videos.length; i++) {
-            const videoUrl = videos[i];
-            
+            const videoUrl = videos[i]
+
             // Skip blob URLs - they don't work
             if (typeof videoUrl === 'string' && videoUrl.startsWith('blob:')) {
-              console.log(`Skipping blob video URL: ${videoUrl}`);
-              continue;
+              console.log(`Skipping blob video URL: ${videoUrl}`)
+              continue
             }
-            
+
             await Asset.create({
               propertyId: property.id,
               type: 'video',
               fileName: `temp_video_${validVideoIndex + 1}`, // Temporary filename
               filePath: videoUrl,
               fileUrl: videoUrl, // Store as URL for now
-              sortOrder: validVideoIndex
+              sortOrder: validVideoIndex,
             })
-            validVideoIndex++;
+            validVideoIndex++
           }
         }
         console.log('=== END UPDATING VIDEOS ===')
@@ -492,13 +554,13 @@ export default class PropertiesController {
       return response.ok({
         success: true,
         message: 'Property updated successfully',
-        data: property
+        data: property,
       })
     } catch (error) {
       return response.badRequest({
         success: false,
         message: 'Error updating property',
-        error: error.message
+        error: error.message,
       })
     }
   }
@@ -514,7 +576,7 @@ export default class PropertiesController {
       if (property.userId !== user.id && user.role !== 'admin') {
         return response.forbidden({
           success: false,
-          message: 'You are not authorized to delete this property'
+          message: 'You are not authorized to delete this property',
         })
       }
 
@@ -522,13 +584,13 @@ export default class PropertiesController {
 
       return response.ok({
         success: true,
-        message: 'Property deleted successfully'
+        message: 'Property deleted successfully',
       })
     } catch (error) {
       return response.badRequest({
         success: false,
         message: 'Error deleting property',
-        error: error.message
+        error: error.message,
       })
     }
   }
@@ -542,6 +604,9 @@ export default class PropertiesController {
 
       const properties = await Property.query()
         .where('user_id', user.id)
+        .preload('agent', (agentQuery) => {
+          agentQuery.select(['id', 'name', 'email', 'phone1', 'phone2', 'company', 'image'])
+        })
         .preload('assets', (assetQuery) => {
           assetQuery.orderBy('sort_order', 'asc').orderBy('created_at', 'asc')
         })
@@ -563,13 +628,13 @@ export default class PropertiesController {
 
       return response.ok({
         success: true,
-        data: properties
+        data: properties,
       })
     } catch (error) {
       return response.internalServerError({
         success: false,
         message: 'Error fetching your properties',
-        error: error.message
+        error: error.message,
       })
     }
   }
@@ -584,7 +649,7 @@ export default class PropertiesController {
       if (!query.trim()) {
         return response.badRequest({
           success: false,
-          message: 'Search query is required'
+          message: 'Search query is required',
         })
       }
 
@@ -602,6 +667,9 @@ export default class PropertiesController {
         .preload('user', (userQuery) => {
           userQuery.select(['id', 'firstName', 'lastName', 'email', 'phone', 'role'])
         })
+        .preload('agent', (agentQuery) => {
+          agentQuery.select(['id', 'name', 'email', 'phone1', 'phone2', 'company', 'image'])
+        })
         .preload('assets', (assetQuery) => {
           assetQuery.orderBy('sort_order', 'asc').orderBy('created_at', 'asc')
         })
@@ -610,13 +678,63 @@ export default class PropertiesController {
 
       return response.ok({
         success: true,
-        data: properties
+        data: properties,
       })
     } catch (error) {
       return response.internalServerError({
         success: false,
         message: 'Error searching properties',
-        error: error.message
+        error: error.message,
+      })
+    }
+  }
+
+  // Assign agent to property
+  async assignAgent({ params, request, response, auth }: HttpContext) {
+    try {
+      const user = auth.getUserOrFail()
+      const { agentId } = request.only(['agentId'])
+
+      const property = await Property.findOrFail(params.id)
+
+      // Check if user owns the property or is admin
+      if (property.userId !== user.id && user.role !== 'admin') {
+        return response.forbidden({
+          success: false,
+          message: 'You are not authorized to modify this property',
+        })
+      }
+
+      // Validate agent exists if agentId is provided
+      if (agentId) {
+        const Agent = (await import('#models/agent')).default
+        const agent = await Agent.find(agentId)
+        if (!agent) {
+          return response.badRequest({
+            success: false,
+            message: 'Agent not found',
+          })
+        }
+      }
+
+      // Update property with agent
+      property.agentId = agentId || null
+      await property.save()
+
+      // Load relationships for response
+      await property.load('agent')
+      await property.load('user')
+
+      return response.ok({
+        success: true,
+        message: agentId ? 'Agent assigned successfully' : 'Agent unassigned successfully',
+        data: property,
+      })
+    } catch (error) {
+      return response.badRequest({
+        success: false,
+        message: 'Error assigning agent to property',
+        error: error.message,
       })
     }
   }

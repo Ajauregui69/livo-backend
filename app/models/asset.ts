@@ -84,4 +84,15 @@ export default class Asset extends BaseModel {
     // Return relative path for locally stored files
     return `/uploads/${this.filePath}`
   }
+
+  get floorLabel() {
+    return this.metadata?.floorLabel || 'ground-floor'
+  }
+
+  set floorLabel(value: string) {
+    this.metadata = {
+      ...this.metadata,
+      floorLabel: value
+    }
+  }
 }
