@@ -1,7 +1,9 @@
 import { DateTime } from 'luxon'
-import { BaseModel, column, hasMany, beforeCreate } from '@adonisjs/lucid/orm'
-import type { HasMany } from '@adonisjs/lucid/types/relations'
+import hash from '@adonisjs/core/services/hash'
+import { BaseModel, column, hasMany, belongsTo, beforeCreate } from '@adonisjs/lucid/orm'
+import type { HasMany, BelongsTo } from '@adonisjs/lucid/types/relations'
 import Property from '#models/property'
+import Agency from '#models/agency'
 import { randomUUID } from 'node:crypto'
 
 export default class Agent extends BaseModel {
@@ -14,6 +16,9 @@ export default class Agent extends BaseModel {
 
   @column()
   declare email: string | null
+
+  @column({ serializeAs: null })
+  declare password: string | null
 
   @column()
   declare image: string | null
@@ -71,6 +76,13 @@ export default class Agent extends BaseModel {
   })
   declare socialMedia: { [key: string]: string } | null
 
+  // Agency relationship
+  @column({ columnName: 'agency_id' })
+  declare agencyId: string | null
+
+  @column()
+  declare role: 'admin' | 'agent'
+
   // Status
   @column({ columnName: 'is_active' })
   declare isActive: boolean
@@ -83,12 +95,28 @@ export default class Agent extends BaseModel {
 
   @beforeCreate()
   static async generateUuid(agent: Agent) {
+    console.log('🏗️ Agent beforeCreate hook called')
     if (!agent.id) {
       agent.id = randomUUID()
+      console.log('🆔 Generated UUID:', agent.id)
+    }
+    // Hash password before creating
+    if (agent.password) {
+      console.log('🔐 Hashing password for agent:', agent.name)
+      const originalPassword = agent.password
+      agent.password = await hash.make(agent.password)
+      console.log('✅ Password hashed successfully')
+    } else {
+      console.log('⚠️ No password provided for agent:', agent.name)
     }
   }
 
   // Relationships
+  @belongsTo(() => Agency, {
+    foreignKey: 'agencyId'
+  })
+  declare agency: BelongsTo<typeof Agency>
+
   @hasMany(() => Property, {
     foreignKey: 'agentId'
   })
@@ -118,5 +146,33 @@ export default class Agent extends BaseModel {
 
   static byCategory = (query: any, category: string) => {
     return query.where('category', category)
+  }
+
+  static byAgency = (query: any, agencyId: string) => {
+    return query.where('agency_id', agencyId)
+  }
+
+  static isAdmin = (query: any) => {
+    return query.where('role', 'admin')
+  }
+
+  static isAgent = (query: any) => {
+    return query.where('role', 'agent')
+  }
+
+  // Authentication methods for agents
+  async verifyPassword(plainPassword: string): Promise<boolean> {
+    console.log('🔍 Verifying password for agent:', this.name)
+    console.log('🔍 Agent has password:', !!this.password)
+    console.log('🔍 Plain password provided:', !!plainPassword)
+    
+    if (!this.password) {
+      console.log('❌ Agent has no password stored')
+      return false
+    }
+    
+    const isValid = await hash.verify(this.password, plainPassword)
+    console.log('🔍 Password verification result:', isValid)
+    return isValid
   }
 }

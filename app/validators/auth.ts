@@ -10,7 +10,7 @@ export const registerValidator = vine.compile(
     }),
     phone: vine.string().optional(),
     password: vine.string().minLength(8),
-    role: vine.enum(['agent', 'broker', 'developer', 'comprador']).optional(),
+    role: vine.enum(['agent', 'broker', 'developer', 'comprador', 'admin', 'agency_admin']).optional(),
     companyName: vine.string().maxLength(100).optional(),
     licenseNumber: vine.string().maxLength(50).optional()
   })

@@ -34,7 +34,7 @@ export default class Property extends BaseModel {
   declare categories: string[] | null
 
   @column()
-  declare listingType: 'sale' | 'rent'
+  declare listingType: 'sale' | 'rent' | 'R2O'
 
   @column()
   declare listingStatus: 'active' | 'sold' | 'processing'

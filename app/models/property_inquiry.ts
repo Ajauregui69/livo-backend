@@ -15,13 +15,13 @@ export default class PropertyInquiry extends BaseModel {
   declare name: string
 
   @column()
-  declare phone: string
+  declare phone: string | null
 
   @column()
   declare email: string
 
   @column()
-  declare inquiryType: string
+  declare inquiryType: string | null
 
   @column()
   declare message: string

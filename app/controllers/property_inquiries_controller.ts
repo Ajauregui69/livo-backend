@@ -10,9 +10,9 @@ export default class PropertyInquiriesController {
       const createInquiryValidator = vine.compile(
         vine.object({
           name: vine.string().minLength(2).maxLength(100),
-          phone: vine.string().minLength(10).maxLength(20),
+          phone: vine.string().minLength(10).maxLength(20).optional().nullable(),
           email: vine.string().email(),
-          inquiryType: vine.string().in(['Engineer', 'Doctor', 'Employee', 'Businessman', 'Other']),
+          inquiryType: vine.string().in(['Engineer', 'Doctor', 'Employee', 'Businessman', 'Other']).optional(),
           message: vine.string().minLength(10).maxLength(1000),
           agreeToTerms: vine.boolean(),
         })

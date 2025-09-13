@@ -1,14 +1,47 @@
 import { BaseSeeder } from '@adonisjs/lucid/seeders'
 import Property from '#models/property'
 import Asset from '#models/asset'
+import User from '#models/user'
+import Agent from '#models/agent'
 import { DateTime } from 'luxon'
 
 export default class extends BaseSeeder {
   async run() {
-    const userId = '7f43d8b7-231f-4410-991d-ce9f2b414b90'
+    // Get a real user to assign properties to
+    // First try to get an agent/broker/developer, if not found create one
+    let propertyOwner = await User.query()
+      .whereIn('role', ['agent', 'broker', 'developer'])
+      .first()
+
+    if (!propertyOwner) {
+      // If no agent exists, get any user or create one
+      propertyOwner = await User.first()
+      
+      if (!propertyOwner) {
+        // If no users exist at all, create a basic one
+        propertyOwner = await User.create({
+          firstName: 'Admin',
+          lastName: 'Property',
+          email: 'admin.property@livo.com',
+          password: 'password123',
+          role: 'developer',
+          status: 'active'
+        })
+      }
+    }
+
+    const userId = propertyOwner.id
     
-    // Agent IDs from the agent seeder
-    const agentIds = ['agent-1', 'agent-2', 'agent-3', 'agent-4', 'agent-5']
+    // Get real agent IDs from the agents table
+    const agents = await Agent.query().limit(5)
+    
+    const agentIds = agents.length > 0 ? agents.map(agent => agent.id) : []
+    
+    // Helper function to get agent ID safely
+    const getAgentId = (index: number) => {
+      if (agentIds.length === 0) return null
+      return agentIds[index % agentIds.length]
+    }
 
     // Generate proper UUIDs for properties
     const propertyIds = [
@@ -26,7 +59,7 @@ export default class extends BaseSeeder {
       {
         id: propertyIds[0],
         userId: userId,
-        agentId: agentIds[0], // Assigned to María González
+        agentId: getAgentId(0),
         title: 'Casa de Lujo en Barrio Salamanca',
         description: 'Espectacular casa de 4 plantas en una de las zonas más exclusivas de Madrid. Completamente renovada con acabados de primera calidad.',
         categories: ['Houses', 'Luxury'],
@@ -67,7 +100,7 @@ export default class extends BaseSeeder {
       {
         id: propertyIds[1],
         userId: userId,
-        agentId: agentIds[1], // Assigned to Carlos Rodríguez
+        agentId: getAgentId(1),
         title: 'Apartamento Moderno en Eixample',
         description: 'Elegante apartamento de 3 habitaciones en el corazón del Eixample barcelonés. Totalmente equipado y listo para entrar a vivir.',
         categories: ['Apartments', 'Modern'],
@@ -100,7 +133,7 @@ export default class extends BaseSeeder {
       {
         id: propertyIds[2],
         userId: userId,
-        agentId: agentIds[2], // Assigned to Ana Martínez
+        agentId: getAgentId(2),
         title: 'Villa Mediterránea con Vistas al Mar',
         description: 'Impresionante villa con vistas panorámicas al Mediterráneo. Piscina infinita, jardín tropical y acceso directo a la playa.',
         categories: ['Villa', 'Beachfront'],
@@ -168,7 +201,7 @@ export default class extends BaseSeeder {
       {
         id: propertyIds[4],
         userId: userId,
-        agentId: agentIds[3], // Assigned to Diego López
+        agentId: getAgentId(3),
         title: 'Nave Industrial con Logística',
         description: 'Amplia nave industrial con facilidades logísticas. Ideal para almacenamiento y distribución.',
         categories: ['Industrial', 'Warehouse'],
@@ -200,7 +233,7 @@ export default class extends BaseSeeder {
       {
         id: propertyIds[5],
         userId: userId,
-        agentId: agentIds[4], // Assigned to Isabel Fernández
+        agentId: getAgentId(4),
         title: 'Apartamento Estudios Universitarios',
         description: 'Moderno apartamento ideal para estudiantes. Ubicado cerca de las principales universidades.',
         categories: ['Apartments', 'Student Housing'],
@@ -267,7 +300,7 @@ export default class extends BaseSeeder {
       {
         id: propertyIds[7],
         userId: userId,
-        agentId: agentIds[0], // Assigned to María González again
+        agentId: getAgentId(0),
         title: 'Penthouse de Lujo con Terraza',
         description: 'Exclusivo penthouse en la Gran Vía madrileña. Terraza de 200m² con vistas de 360°.',
         categories: ['Apartments', 'Luxury', 'Penthouse'],
