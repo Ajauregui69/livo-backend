@@ -1,5 +1,7 @@
 import type { HttpContext } from '@adonisjs/core/http'
+import { DateTime } from 'luxon'
 import Agent from '#models/agent'
+import User from '#models/user'
 import Property from '#models/property'
 
 export default class AgentsController {
@@ -16,6 +18,12 @@ export default class AgentsController {
 
       const query = Agent.query()
         .where('is_active', true)
+        .whereHas('user', (userQuery) => {
+          userQuery.whereIn('role', ['agent', 'agency_admin'])
+        })
+        .preload('user', (userQuery) => {
+          userQuery.select(['id', 'firstName', 'lastName', 'email', 'phone'])
+        })
         .withCount('properties', (propertiesQuery) => {
           propertiesQuery.where('property_status', 'published').where('listing_status', 'active')
         })
@@ -32,14 +40,14 @@ export default class AgentsController {
       if (search) {
         query.where((builder) => {
           builder
-            .where('name', 'ILIKE', `%${search}%`)
-            .orWhere('company', 'ILIKE', `%${search}%`)
+            .where('company', 'ILIKE', `%${search}%`)
             .orWhere('city', 'ILIKE', `%${search}%`)
         })
       }
 
-      // Order by rating desc, then by name
-      query.orderBy('rating', 'desc').orderBy('name', 'asc')
+      // Order by rating desc, then by created_at
+      query.orderBy('rating', 'desc')
+        .orderBy('created_at', 'desc')
 
       const agents = await query.paginate(page, limit)
       
@@ -69,7 +77,11 @@ export default class AgentsController {
    */
   async show({ params, request, response }: HttpContext) {
     try {
-      const agent = await Agent.find(params.id)
+      const agent = await Agent.query()
+        .where('id', params.id)
+        .preload('user')
+        .preload('agency')
+        .first()
 
       if (!agent) {
         return response.notFound({
@@ -143,22 +155,30 @@ export default class AgentsController {
   }
 
   /**
-   * Create a new agent (Admin only)
+   * Create a new agent (Agency Admin only)
    */
   async store({ request, response, auth }: HttpContext) {
     try {
-      // Check if user is admin (you might want to add role-based middleware)
-      const user = auth.user
-      if (!user) {
-        return response.unauthorized({
+      const currentUser = auth.getUserOrFail()
+
+      // Check if user is agency_admin or admin
+      if (!['agency_admin', 'admin'].includes(currentUser.role)) {
+        return response.forbidden({
           success: false,
-          message: 'Authentication required'
+          message: 'Only agency administrators can create agents'
         })
       }
 
-      const data = request.only([
-        'name',
+      // Separate user data from agent data
+      const userData = request.only([
+        'firstName',
+        'lastName',
         'email',
+        'phone',
+        'password'
+      ])
+
+      const agentData = request.only([
         'image',
         'city',
         'category',
@@ -172,15 +192,49 @@ export default class AgentsController {
         'website',
         'memberSince',
         'bio',
-        'socialMedia'
+        'socialMedia',
+        'agencyId'
       ])
 
+      // Remove any name, email, password fields from agentData if they exist
+      delete agentData.name
+      delete agentData.email
+      delete agentData.password
+
+      // Check if user with this email already exists
+      const existingUser = await User.findBy('email', userData.email)
+      if (existingUser) {
+        return response.badRequest({
+          success: false,
+          message: `Ya existe un usuario con el email ${userData.email}. Por favor use otro email.`,
+          error: 'EMAIL_ALREADY_EXISTS'
+        })
+      }
+
+      // Create User first
+      const newUser = await User.create({
+        ...userData,
+        role: 'agent',
+        status: 'active',
+        emailVerifiedAt: DateTime.now()
+      })
+
+      console.log('✅ User created:', newUser.id)
+
+      // Create Agent profile linked to User
       const agent = await Agent.create({
-        ...data,
+        ...agentData,
+        userId: newUser.id,
         rating: 0,
         reviewsCount: 0,
         isActive: true
       })
+
+      console.log('✅ Agent profile created:', agent.id)
+
+      // Load relationships for response
+      await agent.load('user')
+      await agent.load('agency')
 
       return response.created({
         success: true,
@@ -188,6 +242,7 @@ export default class AgentsController {
         message: 'Agent created successfully'
       })
     } catch (error) {
+      console.error('❌ Error creating agent:', error)
       return response.badRequest({
         success: false,
         message: 'Failed to create agent',
@@ -218,9 +273,14 @@ export default class AgentsController {
         })
       }
 
-      const data = request.only([
-        'name',
+      const userData = request.only([
+        'firstName',
+        'lastName',
         'email',
+        'phone'
+      ])
+
+      const agentData = request.only([
         'image',
         'city',
         'category',
@@ -238,8 +298,23 @@ export default class AgentsController {
         'isActive'
       ])
 
-      agent.merge(data)
+      // Remove any name, email, password fields from agentData if they exist
+      delete agentData.name
+      delete agentData.email
+      delete agentData.password
+
+      // Update agent data
+      agent.merge(agentData)
       await agent.save()
+
+      // Update user data if agent has associated user
+      if (agent.userId && Object.keys(userData).length > 0) {
+        await agent.load('user')
+        if (agent.user) {
+          agent.user.merge(userData)
+          await agent.user.save()
+        }
+      }
 
       return response.ok({
         success: true,

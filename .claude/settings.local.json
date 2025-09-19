@@ -2,7 +2,17 @@
   "permissions": {
     "allow": [
       "Bash(node ace make:migration:*)",
-      "Bash(node ace migration:run:*)"
+      "Bash(node ace migration:run:*)",
+      "Bash(node:*)",
+      "Bash(export NVM_DIR=\"$HOME/.nvm\")",
+      "Bash([ -s \"$NVM_DIR/nvm.sh\" ])",
+      "Bash(. \"$NVM_DIR/nvm.sh\")",
+      "Bash([ -s \"$NVM_DIR/bash_completion\" ])",
+      "Bash(. \"$NVM_DIR/bash_completion\")",
+      "Bash(nvm install:*)",
+      "Bash(source ~/.bashrc)",
+      "Bash(curl:*)",
+      "Bash(bash)"
     ],
     "deny": []
   }

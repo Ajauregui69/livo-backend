@@ -10,8 +10,11 @@ export default class extends BaseSchema {
   }
 
   async down() {
-    this.schema.alterTable(this.tableName, (table) => {
-      table.dropColumn('agent_id')
-    })
+    const hasColumn = await this.schema.hasColumn(this.tableName, 'agent_id')
+    if (hasColumn) {
+      this.schema.alterTable(this.tableName, (table) => {
+        table.dropColumn('agent_id')
+      })
+    }
   }
 }

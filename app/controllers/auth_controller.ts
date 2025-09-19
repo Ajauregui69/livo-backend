@@ -32,13 +32,16 @@ export default class AuthController {
       try {
         // Generate verification token and send email (optional)
         verificationToken = await EmailVerificationToken.createForUser(user.id, user.email)
-        
+
         // Try to send verification email (skip if SMTP not configured)
+        // For production: Configure proper SMTP credentials in .env
+        // For development: MailHog/Mailpit can be used on localhost:1025, or this will auto-activate users
         await mail.send(new VerifyEmailMail(user, verificationToken.token))
         emailSent = true
       } catch (emailError) {
         console.log('Email not sent (SMTP not configured):', emailError.message)
         // For development/testing, mark user as active if email can't be sent
+        // This allows development to work without requiring SMTP setup
         user.status = 'active'
         user.emailVerifiedAt = DateTime.now()
         await user.save()
@@ -105,81 +108,32 @@ export default class AuthController {
           })
         }
         
-        // Check if this is an agent user (created from agent record) 
-        // but NOT an agency admin
-        if (userExists.role === 'agent') {
-          console.log('🏢 User has agent role - checking if real agent or agency admin...')
-          
-          // Check if this user is an agency admin
-          const isAgencyAdmin = await Agency.query()
-            .where('admin_user_id', userExists.id)
-            .first()
-            
-          if (isAgencyAdmin) {
-            console.log('👑 User is actually an agency admin, not an agent - using normal user verification')
-            // Treat as normal user (agency admin)
-            const user = await User.verifyCredentials(email, password)
-            console.log('🔐 Agency admin credentials verified!')
-            
-            const token = await User.accessTokens.create(user)
-            console.log('🎫 Agency admin token created successfully')
+        // Handle agent and agency_admin roles uniformly
+        if (userExists.role === 'agent' || userExists.role === 'agency_admin') {
+          console.log('🏢 User has agent/agency_admin role - using standard verification')
 
-            return response.json({
-              message: 'Login exitoso',
-              user: {
-                id: user.id,
-                firstName: user.firstName,
-                lastName: user.lastName,
-                email: user.email,
-                role: 'admin', // Use 'admin' role for agency admins to match frontend
-                status: user.status,
-                companyName: user.companyName,
-                licenseNumber: user.licenseNumber,
-                emailVerified: !!user.emailVerifiedAt
-              },
-              token: token.value!.release()
-            })
-          }
-          
-          console.log('🏢 User is a real agent - using agent verification method')
-          
-          // Find the corresponding agent record
-          const agentRecord = await Agent.find(userExists.id)
-          if (!agentRecord) {
-            return response.status(401).json({
-              message: 'Error interno: Registro de agente no encontrado'
-            })
-          }
-          
-          // Verify password using agent method
-          const isValidPassword = await agentRecord.verifyPassword(password)
-          if (!isValidPassword) {
-            return response.status(401).json({
-              message: 'Credenciales inválidas'
-            })
-          }
-          
-          console.log('🔐 Agent password verified via agent record!')
-          
-          // Load agency information
-          await agentRecord.load('agency')
-          
-          const token = await User.accessTokens.create(userExists)
-          console.log('🎫 Agent token created successfully')
+          // Use standard user verification for both agents and agency admins
+          const user = await User.verifyCredentials(email, password)
+          console.log('🔐 Agent/Agency admin credentials verified!')
+
+          const token = await User.accessTokens.create(user)
+          console.log('🎫 Agent/Agency admin token created successfully')
+
+          // Determine display role - agency_admin users show as 'admin' in frontend
+          const displayRole = user.role === 'agency_admin' ? 'admin' : user.role
 
           return response.json({
-            message: 'Login de agente exitoso',
+            message: 'Login exitoso',
             user: {
-              id: userExists.id,
-              firstName: userExists.firstName,
-              lastName: userExists.lastName,
-              name: agentRecord.name,
-              email: userExists.email,
-              role: userExists.role,
-              isAgent: true,
-              agency: agentRecord.agency,
-              isActive: agentRecord.isActive,
-              company: agentRecord.company
+              id: user.id,
+              firstName: user.firstName,
+              lastName: user.lastName,
+              email: user.email,
+              role: displayRole,
+              status: user.status,
+              companyName: user.companyName,
+              licenseNumber: user.licenseNumber,
+              emailVerified: !!user.emailVerifiedAt
             },
             token: token.value!.release()
           })
@@ -295,7 +249,10 @@ export default class AuthController {
    */
   async me({ auth, response }: HttpContext) {
     const user = auth.user!
-    
+
+    // Determine display role - agency_admin users show as 'admin' in frontend
+    const displayRole = user.role === 'agency_admin' ? 'admin' : user.role
+
     return response.json({
       user: {
         id: user.id,
@@ -303,7 +260,7 @@ export default class AuthController {
         lastName: user.lastName,
         email: user.email,
         phone: user.phone,
-        role: user.role,
+        role: displayRole,
         status: user.status,
         companyName: user.companyName,
         licenseNumber: user.licenseNumber,

@@ -4,21 +4,14 @@ import { BaseModel, column, hasMany, belongsTo, beforeCreate } from '@adonisjs/l
 import type { HasMany, BelongsTo } from '@adonisjs/lucid/types/relations'
 import Property from '#models/property'
 import Agency from '#models/agency'
+import User from '#models/user'
 import { randomUUID } from 'node:crypto'
 
 export default class Agent extends BaseModel {
   @column({ isPrimary: true })
   declare id: string
 
-  // Basic Info
-  @column()
-  declare name: string
-
-  @column()
-  declare email: string | null
-
-  @column({ serializeAs: null })
-  declare password: string | null
+  // Note: name, email, password are now handled by the related User model
 
   @column()
   declare image: string | null
@@ -80,8 +73,9 @@ export default class Agent extends BaseModel {
   @column({ columnName: 'agency_id' })
   declare agencyId: string | null
 
-  @column()
-  declare role: 'admin' | 'agent'
+  // User relationship
+  @column({ columnName: 'user_id' })
+  declare userId: string | null
 
   // Status
   @column({ columnName: 'is_active' })
@@ -100,15 +94,7 @@ export default class Agent extends BaseModel {
       agent.id = randomUUID()
       console.log('🆔 Generated UUID:', agent.id)
     }
-    // Hash password before creating
-    if (agent.password) {
-      console.log('🔐 Hashing password for agent:', agent.name)
-      const originalPassword = agent.password
-      agent.password = await hash.make(agent.password)
-      console.log('✅ Password hashed successfully')
-    } else {
-      console.log('⚠️ No password provided for agent:', agent.name)
-    }
+    // Note: Password hashing is now handled by the User model
   }
 
   // Relationships
@@ -117,18 +103,37 @@ export default class Agent extends BaseModel {
   })
   declare agency: BelongsTo<typeof Agency>
 
+  @belongsTo(() => User, {
+    foreignKey: 'userId'
+  })
+  declare user: BelongsTo<typeof User>
+
   @hasMany(() => Property, {
     foreignKey: 'agentId'
   })
   declare properties: HasMany<typeof Property>
 
   // Computed properties
+  get name() {
+    if (this.user) {
+      return `${this.user.firstName} ${this.user.lastName}`.trim()
+    }
+    return 'Agent'
+  }
+
   get fullContactInfo() {
     const contacts = []
     if (this.phone1) contacts.push(this.phone1)
     if (this.phone2) contacts.push(this.phone2)
-    if (this.email) contacts.push(this.email)
+    if (this.user?.email) contacts.push(this.user.email)
     return contacts.join(' | ')
+  }
+
+  get fullName() {
+    if (this.user) {
+      return `${this.user.firstName} ${this.user.lastName}`
+    }
+    return 'Agent'
   }
 
   get averageRating() {
@@ -152,27 +157,15 @@ export default class Agent extends BaseModel {
     return query.where('agency_id', agencyId)
   }
 
-  static isAdmin = (query: any) => {
-    return query.where('role', 'admin')
-  }
-
-  static isAgent = (query: any) => {
-    return query.where('role', 'agent')
-  }
-
-  // Authentication methods for agents
+  // Authentication methods for agents - now delegated to User model
   async verifyPassword(plainPassword: string): Promise<boolean> {
-    console.log('🔍 Verifying password for agent:', this.name)
-    console.log('🔍 Agent has password:', !!this.password)
-    console.log('🔍 Plain password provided:', !!plainPassword)
-    
-    if (!this.password) {
-      console.log('❌ Agent has no password stored')
+    console.log('🔍 Verifying password for agent:', this.fullName)
+
+    if (!this.user) {
+      console.log('❌ Agent has no associated user')
       return false
     }
-    
-    const isValid = await hash.verify(this.password, plainPassword)
-    console.log('🔍 Password verification result:', isValid)
-    return isValid
+
+    return await this.user.verifyCredentials(this.user.email, plainPassword)
   }
 }

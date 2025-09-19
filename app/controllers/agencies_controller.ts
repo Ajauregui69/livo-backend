@@ -349,6 +349,7 @@ export default class AgenciesController {
 
       const agents = await Agent.query()
         .where('agency_id', agency.id)
+        .preload('user')
         .preload('agency')
         .preload('properties')
         .orderBy('created_at', 'desc')
@@ -392,50 +393,76 @@ export default class AgenciesController {
         })
       }
 
-      const agentData = request.only([
-        'name', 'email', 'password', 'phone1', 'phone2', 'city', 'category', 
-        'company', 'brokerAddress', 'officePhone', 'mobilePhone', 'fax',
-        'website', 'bio', 'socialMedia', 'image', 'memberSince', 'isActive'
+      // Separate user data from agent data
+      const userData = request.only([
+        'firstName',
+        'lastName',
+        'email',
+        'phone',
+        'password'
       ])
 
-      console.log('🔧 Creating agent with data:', {
-        ...agentData,
-        password: agentData.password ? '***PRESENT***' : '***MISSING***'
+      const agentData = request.only([
+        'image',
+        'city',
+        'category',
+        'company',
+        'brokerAddress',
+        'phone1',
+        'phone2',
+        'officePhone',
+        'mobilePhone',
+        'fax',
+        'website',
+        'memberSince',
+        'bio',
+        'socialMedia'
+      ])
+
+      // Remove any name, email, password fields from agentData if they exist
+      delete agentData.name
+      delete agentData.email
+      delete agentData.password
+
+      console.log('🔧 Creating agent with user data:', {
+        ...userData,
+        password: userData.password ? '***PRESENT***' : '***MISSING***'
       })
 
-      // Create agent
+      // Check if user with this email already exists
+      const existingUser = await User.findBy('email', userData.email)
+      if (existingUser) {
+        return response.badRequest({
+          status: 'error',
+          message: `Ya existe un usuario con el email ${userData.email}. Por favor use otro email.`,
+          error: 'EMAIL_ALREADY_EXISTS'
+        })
+      }
+
+      // Create User first
+      const newUser = await User.create({
+        ...userData,
+        role: 'agent',
+        status: 'active',
+        emailVerifiedAt: DateTime.now()
+      })
+
+      console.log('✅ User created:', newUser.id)
+
+      // Create Agent profile linked to User
       const agent = await Agent.create({
         ...agentData,
+        userId: newUser.id,
         agencyId: agency.id,
-        role: 'agent',
+        rating: 0,
+        reviewsCount: 0,
         isActive: true
       })
 
-      console.log('✅ Agent created successfully:', {
-        id: agent.id,
-        name: agent.name,
-        email: agent.email,
-        hasPassword: !!agent.password
-      })
+      console.log('✅ Agent profile created:', agent.id)
 
-      // Create corresponding user record for authentication tokens
-      try {
-        await User.create({
-          id: agent.id, // Use the same ID as the agent
-          firstName: agent.name,
-          lastName: '',
-          email: agent.email,
-          password: agent.password, // Use the same hashed password
-          role: 'agent',
-          status: 'active',
-          emailVerifiedAt: DateTime.now()
-        })
-        console.log('✅ Corresponding user record created for agent tokens')
-      } catch (userError) {
-        console.log('⚠️ User record creation failed (might already exist):', userError.message)
-        // Continue even if user creation fails - the agent is still created
-      }
-
+      // Load relationships for response
+      await agent.load('user')
       await agent.load('agency')
 
       return response.created({
@@ -444,6 +471,7 @@ export default class AgenciesController {
         message: 'Agent created successfully'
       })
     } catch (error) {
+      console.error('❌ Error creating agent:', error)
       return response.badRequest({
         status: 'error',
         message: 'Error creating agent',
@@ -589,6 +617,63 @@ export default class AgenciesController {
       return response.internalServerError({
         status: 'error',
         message: 'Error syncing agents with users',
+        error: error.message
+      })
+    }
+  }
+
+  /**
+   * Get current agent's agency
+   */
+  async getAgentAgency({ response, auth }: HttpContext) {
+    try {
+      const user = auth.getUserOrFail()
+
+      console.log('🔍 Getting agency for agent user:', user.id, user.role)
+
+      // Only agents can access this endpoint
+      if (user.role !== 'agent') {
+        return response.forbidden({
+          status: 'error',
+          message: 'Only agents can access this endpoint'
+        })
+      }
+
+      // Find the agent record for this user using the new user_id relationship
+      const agent = await Agent.query()
+        .where('user_id', user.id)
+        .preload('agency')
+        .first()
+
+      console.log('🔍 Found agent record:', !!agent)
+      console.log('🔍 Agent has agency:', !!agent?.agency)
+
+      if (!agent) {
+        console.log('❌ No agent record found for user:', user.id)
+        return response.notFound({
+          status: 'error',
+          message: 'No agent profile found for this user. Please contact your agency administrator.'
+        })
+      }
+
+      if (!agent.agency) {
+        console.log('❌ Agent found but no agency assigned:', agent.id)
+        return response.notFound({
+          status: 'error',
+          message: 'No agency assigned to this agent'
+        })
+      }
+
+      console.log('✅ Returning agency:', agent.agency.name)
+      return response.ok({
+        status: 'success',
+        data: agent.agency
+      })
+    } catch (error) {
+      console.error('❌ Error retrieving agent agency:', error)
+      return response.internalServerError({
+        status: 'error',
+        message: 'Error retrieving agent agency',
         error: error.message
       })
     }

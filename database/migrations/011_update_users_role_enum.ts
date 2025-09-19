@@ -11,11 +11,11 @@ export default class extends BaseSchema {
   }
 
   async down() {
-    // Revert to original constraint
+    // Revert to original constraint (but include agency_admin since it exists in data)
     this.schema.raw(`
       ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
-      ALTER TABLE users ADD CONSTRAINT users_role_check 
-      CHECK (role IN ('agent', 'broker', 'developer', 'comprador', 'admin'));
+      ALTER TABLE users ADD CONSTRAINT users_role_check
+      CHECK (role IN ('agent', 'broker', 'developer', 'comprador', 'admin', 'agency_admin'));
     `)
   }
 }

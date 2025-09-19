@@ -839,21 +839,46 @@ export default class PropertiesController {
       const page = request.input('page', 1)
       const limit = request.input('limit', 10)
 
-      const properties = await Property.query()
-        .where('user_id', user.id)
-        .preload('agent', (agentQuery) => {
-          agentQuery.select(['id', 'name', 'email', 'phone1', 'phone2', 'company', 'image'])
-        })
-        .preload('assets', (assetQuery) => {
-          assetQuery.orderBy('sort_order', 'asc').orderBy('created_at', 'asc')
-        })
-        .orderBy('created_at', 'desc')
-        .paginate(page, limit)
+      let properties;
+
+      // If user is an agent, get properties assigned to them
+      if (user.role === 'agent') {
+        properties = await Property.query()
+          .where('agent_id', user.id)
+          .preload('user', (userQuery) => {
+            userQuery.select(['id', 'firstName', 'lastName', 'email', 'phone', 'role'])
+          })
+          .preload('agent', (agentQuery) => {
+            agentQuery.select(['id', 'name', 'email', 'phone1', 'phone2', 'company', 'image'])
+          })
+          .preload('assets', (assetQuery) => {
+            assetQuery.orderBy('sort_order', 'asc').orderBy('created_at', 'asc')
+          })
+          .orderBy('created_at', 'desc')
+          .paginate(page, limit)
+      } else {
+        // For property owners, get properties they own
+        properties = await Property.query()
+          .where('user_id', user.id)
+          .preload('agent', (agentQuery) => {
+            agentQuery.select(['id', 'name', 'email', 'phone1', 'phone2', 'company', 'image'])
+          })
+          .preload('assets', (assetQuery) => {
+            assetQuery.orderBy('sort_order', 'asc').orderBy('created_at', 'asc')
+          })
+          .orderBy('created_at', 'desc')
+          .paginate(page, limit)
+      }
 
       console.log('=== MY PROPERTIES DEBUG ===')
+      console.log('User role:', user.role)
+      console.log('User ID:', user.id)
+      console.log('Filter type:', user.role === 'agent' ? 'by agent_id' : 'by user_id')
       console.log('Properties count:', properties.length)
       properties.forEach((property, index) => {
         console.log(`Property ${index + 1}: ${property.title}`)
+        console.log(`  User ID: ${property.userId}`)
+        console.log(`  Agent ID: ${property.agentId}`)
         console.log(`  Assets count: ${property.assets?.length || 0}`)
         if (property.assets && property.assets.length > 0) {
           property.assets.forEach((asset, assetIndex) => {
@@ -876,31 +901,25 @@ export default class PropertiesController {
     }
   }
 
-  // Search properties
-  async search({ request, response }: HttpContext) {
+  // Advanced search properties with filters
+  async search({ request, response, auth }: HttpContext) {
     try {
-      const query = request.input('q', '')
+      // Get search parameters
+      const searchQuery = request.input('search', '')
+      const type = request.input('type', '') // buy, rent, r2o
+      const propertyType = request.input('propertyType', '')
+      const location = request.input('location', '')
+      const priceMin = request.input('priceMin')
+      const priceMax = request.input('priceMax')
+      const bedrooms = request.input('bedrooms')
+      const bathrooms = request.input('bathrooms')
+      const squareFeetMin = request.input('squareFeetMin')
+      const squareFeetMax = request.input('squareFeetMax')
+      const incomeBasedFilter = request.input('incomeBasedFilter') === 'true'
       const page = request.input('page', 1)
-      const limit = request.input('limit', 10)
+      const limit = request.input('limit', 20)
 
-      if (!query.trim()) {
-        return response.badRequest({
-          success: false,
-          message: 'Search query is required',
-        })
-      }
-
-      const properties = await Property.query()
-        .where((queryBuilder) => {
-          queryBuilder
-            .where('title', 'ILIKE', `%${query}%`)
-            .orWhere('description', 'ILIKE', `%${query}%`)
-            .orWhere('address', 'ILIKE', `%${query}%`)
-            .orWhere('city', 'ILIKE', `%${query}%`)
-            .orWhere('neighborhood', 'ILIKE', `%${query}%`)
-        })
-        .where('property_status', 'published')
-        .where('listing_status', 'active')
+      let query = Property.query()
         .preload('user', (userQuery) => {
           userQuery.select(['id', 'firstName', 'lastName', 'email', 'phone', 'role'])
         })
@@ -910,14 +929,110 @@ export default class PropertiesController {
         .preload('assets', (assetQuery) => {
           assetQuery.orderBy('sort_order', 'asc').orderBy('created_at', 'asc')
         })
+
+      // Apply search text filter
+      if (searchQuery.trim()) {
+        query = query.where((queryBuilder) => {
+          queryBuilder
+            .where('title', 'ILIKE', `%${searchQuery}%`)
+            .orWhere('description', 'ILIKE', `%${searchQuery}%`)
+            .orWhere('address', 'ILIKE', `%${searchQuery}%`)
+            .orWhere('city', 'ILIKE', `%${searchQuery}%`)
+            .orWhere('neighborhood', 'ILIKE', `%${searchQuery}%`)
+            .orWhere('zipcode', 'ILIKE', `%${searchQuery}%`)
+        })
+      }
+
+      // Apply listing type filter based on search type
+      if (type) {
+        switch (type) {
+          case 'buy':
+            query = query.where('listing_type', 'sale')
+            break
+          case 'rent':
+            query = query.where('listing_type', 'rent')
+            break
+          case 'r2o':
+            query = query.where('listing_type', 'r2o')
+            break
+        }
+      }
+
+      // Apply property type filter
+      if (propertyType) {
+        query = query.where('property_type', propertyType)
+      }
+
+      // Apply location filter
+      if (location && location !== 'all') {
+        query = query.where('city', 'ILIKE', `%${location}%`)
+      }
+
+      // Apply price range filter
+      if (priceMin) {
+        query = query.where('price', '>=', parseInt(priceMin))
+      }
+      if (priceMax) {
+        query = query.where('price', '<=', parseInt(priceMax))
+      }
+
+      // Apply bedrooms filter
+      if (bedrooms) {
+        query = query.where('bedrooms', '>=', parseInt(bedrooms))
+      }
+
+      // Apply bathrooms filter
+      if (bathrooms) {
+        query = query.where('bathrooms', '>=', parseInt(bathrooms))
+      }
+
+      // Apply square feet filter
+      if (squareFeetMin) {
+        query = query.where('sqft', '>=', parseInt(squareFeetMin))
+      }
+      if (squareFeetMax) {
+        query = query.where('sqft', '<=', parseInt(squareFeetMax))
+      }
+
+      // Apply income-based filter
+      if (incomeBasedFilter) {
+        try {
+          const user = auth.user
+          if (user && user.monthlyIncome) {
+            // Calculate affordable properties based on 30% of monthly income
+            const maxAffordableMonthlyPayment = user.monthlyIncome * 0.3
+
+            // For rent properties, compare directly with monthly rent
+            if (type === 'rent') {
+              query = query.where('price', '<=', maxAffordableMonthlyPayment)
+            } else {
+              // For sale/buy properties, calculate estimated monthly payment
+              // Assuming 20% down payment, 30-year loan at 7% interest
+              const maxAffordablePrice = maxAffordableMonthlyPayment * 150 // Rough estimate
+              query = query.where('price', '<=', maxAffordablePrice)
+            }
+          }
+        } catch (error) {
+          // If user is not authenticated, ignore income filter
+          console.log('Income filter skipped - user not authenticated')
+        }
+      }
+
+      // Only show published and active properties
+      query = query
+        .where('property_status', 'published')
+        .where('listing_status', 'active')
         .orderBy('created_at', 'desc')
-        .paginate(page, limit)
+
+      const properties = await query.paginate(page, limit)
 
       return response.ok({
         success: true,
         data: properties,
+        message: `Found ${properties.total} properties`,
       })
     } catch (error) {
+      console.error('Search error:', error)
       return response.internalServerError({
         success: false,
         message: 'Error searching properties',

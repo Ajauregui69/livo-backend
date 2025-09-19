@@ -7,6 +7,7 @@ import { DbAccessTokensProvider } from '@adonisjs/auth/access_tokens'
 import type { HasOne, HasMany } from '@adonisjs/lucid/types/relations'
 import CreditScore from '#models/credit_score'
 import Agency from '#models/agency'
+import Agent from '#models/agent'
 import { randomUUID } from 'node:crypto'
 
 const AuthFinder = withAuthFinder(() => hash.use('scrypt'), {
@@ -102,6 +103,11 @@ export default class User extends compose(BaseModel, AuthFinder) {
     foreignKey: 'adminUserId'
   })
   declare agencies: HasMany<typeof Agency>
+
+  @hasOne(() => Agent, {
+    foreignKey: 'userId'
+  })
+  declare agentProfile: HasOne<typeof Agent>
 
   get fullName() {
     return `${this.firstName} ${this.lastName}`

@@ -93,6 +93,7 @@ router.group(() => {
     
     // Agency management routes - protected
     router.get('/my-agencies', '#controllers/agencies_controller.myAgencies')
+    router.get('/agent/my-agency', '#controllers/agencies_controller.getAgentAgency')
     router.post('/agencies', '#controllers/agencies_controller.store')
     router.put('/agencies/:id', '#controllers/agencies_controller.update')
     router.delete('/agencies/:id', '#controllers/agencies_controller.destroy')
