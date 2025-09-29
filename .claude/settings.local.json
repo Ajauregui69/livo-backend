@@ -26,7 +26,9 @@
       "Bash(git commit:*)",
       "Bash(git rev-list:*)",
       "Bash(git rm:*)",
-      "Bash(git filter-branch:*)"
+      "Bash(git filter-branch:*)",
+      "Bash(git config:*)",
+      "Bash(git push:*)"
     ],
     "deny": []
   }
