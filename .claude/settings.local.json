@@ -12,7 +12,18 @@
       "Bash(nvm install:*)",
       "Bash(source ~/.bashrc)",
       "Bash(curl:*)",
-      "Bash(bash)"
+      "Bash(bash)",
+      "Read(//home/alonso/projects/livo/**)",
+      "Bash(npm install:*)",
+      "Bash(chmod:*)",
+      "Bash(aws secretsmanager list-secrets:*)",
+      "Bash(unzip:*)",
+      "Bash(sudo:*)",
+      "Bash(ssh:*)",
+      "Bash(sshpass:*)",
+      "Bash(npm run build:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ],
     "deny": []
   }

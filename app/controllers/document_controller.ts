@@ -1,7 +1,6 @@
 import type { HttpContext } from '@adonisjs/core/http'
 import DocumentUpload from '#models/document_upload'
-import app from '@adonisjs/core/services/app'
-import { cuid } from '@adonisjs/core/helpers'
+import { s3Service } from '#services/s3_service'
 import { MultipartFile } from '@adonisjs/core/bodyparser'
 import vine from '@vinejs/vine'
 
@@ -44,20 +43,14 @@ export default class DocumentController {
         })
       }
 
-      // Generate unique filename
-      const fileName = `${cuid()}.${file.extname}`
-      const filePath = `documents/${user.id}/${fileName}`
-
-      // Save file to storage
-      await file.move(app.makePath('storage/uploads/documents', user.id), {
-        name: fileName
-      })
+      // Upload to S3 (private folder for documents)
+      const uploadResult = await s3Service.uploadFile(file, `private/documents/${user.id}`)
 
       // Create database record
       const document = await DocumentUpload.create({
         userId: user.id,
         fileName: file.clientName,
-        filePath: filePath,
+        filePath: uploadResult.key,
         fileSize: file.size?.toString(),
         mimeType: file.type,
         documentType: documentType,
@@ -119,8 +112,28 @@ export default class DocumentController {
         processedAt: doc.processedAt
       }))
 
+      // Generate signed URLs for documents
+      const documentsWithUrls = await Promise.all(
+        documents.map(async (doc) => {
+          const signedUrl = await s3Service.getSignedUrl(doc.filePath, 3600) // 1 hora
+          return {
+            id: doc.id,
+            fileName: doc.fileName,
+            documentType: doc.documentType,
+            documentTypeDescription: doc.documentTypeDescription,
+            status: doc.status,
+            statusDescription: doc.statusDescription,
+            fileSize: doc.fileSizeFormatted,
+            processingNotes: doc.processingNotes,
+            uploadedAt: doc.createdAt,
+            processedAt: doc.processedAt,
+            viewUrl: signedUrl // URL firmada para ver el documento
+          }
+        })
+      )
+
       return response.json({
-        documents: documentsData,
+        documents: documentsWithUrls,
         total: documents.length
       })
     } catch (error) {
@@ -157,8 +170,13 @@ export default class DocumentController {
         })
       }
 
-      // TODO: Delete physical file from storage
-      // await fs.unlink(app.makePath('storage/uploads', document.filePath))
+      // Delete file from S3
+      try {
+        await s3Service.deleteFile(document.filePath)
+      } catch (s3Error) {
+        console.error('Error deleting file from S3:', s3Error)
+        // Continue with database deletion even if S3 delete fails
+      }
 
       await document.delete()
 
@@ -168,6 +186,41 @@ export default class DocumentController {
     } catch (error) {
       return response.status(500).json({
         message: 'Error al eliminar el documento',
+        error: error.message
+      })
+    }
+  }
+
+  /**
+   * Get signed URL to view a document
+   */
+  async getDocumentUrl({ auth, params, response }: HttpContext) {
+    const user = auth.user!
+    const { documentId } = params
+
+    try {
+      const document = await DocumentUpload.query()
+        .where('id', documentId)
+        .where('user_id', user.id)
+        .first()
+
+      if (!document) {
+        return response.status(404).json({
+          message: 'Documento no encontrado'
+        })
+      }
+
+      // Generate signed URL valid for 1 hour
+      const signedUrl = await s3Service.getSignedUrl(document.filePath, 3600)
+
+      return response.json({
+        viewUrl: signedUrl,
+        expiresIn: 3600,
+        fileName: document.fileName
+      })
+    } catch (error) {
+      return response.status(500).json({
+        message: 'Error al generar URL del documento',
         error: error.message
       })
     }

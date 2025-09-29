@@ -26,7 +26,10 @@ export default class PropertiesController {
           userQuery.select(['id', 'firstName', 'lastName', 'email', 'phone', 'role'])
         })
         .preload('agent', (agentQuery) => {
-          agentQuery.select(['id', 'name', 'email', 'phone1', 'phone2', 'company', 'image'])
+          agentQuery.select(['id', 'phone_1', 'phone_2', 'company', 'image'])
+            .preload('user', (userQuery) => {
+              userQuery.select(['id', 'firstName', 'lastName', 'email'])
+            })
         })
         .preload('assets', (assetQuery) => {
           assetQuery.orderBy('sort_order', 'asc').orderBy('created_at', 'asc')
@@ -101,7 +104,10 @@ export default class PropertiesController {
           userQuery.select(['id', 'firstName', 'lastName', 'email', 'phone', 'role', 'companyName'])
         })
         .preload('agent', (agentQuery) => {
-          agentQuery.select(['id', 'name', 'email', 'phone1', 'phone2', 'company', 'image'])
+          agentQuery.select(['id', 'phone_1', 'phone_2', 'company', 'image'])
+            .preload('user', (userQuery) => {
+              userQuery.select(['id', 'firstName', 'lastName', 'email'])
+            })
         })
         .preload('assets', (assetQuery) => {
           assetQuery.orderBy('sort_order', 'asc').orderBy('created_at', 'asc')
@@ -915,6 +921,7 @@ export default class PropertiesController {
       const bathrooms = request.input('bathrooms')
       const squareFeetMin = request.input('squareFeetMin')
       const squareFeetMax = request.input('squareFeetMax')
+      const amenities = request.input('amenities', '')
       const incomeBasedFilter = request.input('incomeBasedFilter') === 'true'
       const page = request.input('page', 1)
       const limit = request.input('limit', 20)
@@ -924,7 +931,10 @@ export default class PropertiesController {
           userQuery.select(['id', 'firstName', 'lastName', 'email', 'phone', 'role'])
         })
         .preload('agent', (agentQuery) => {
-          agentQuery.select(['id', 'name', 'email', 'phone1', 'phone2', 'company', 'image'])
+          agentQuery.select(['id', 'phone_1', 'phone_2', 'company', 'image'])
+            .preload('user', (userQuery) => {
+              userQuery.select(['id', 'firstName', 'lastName', 'email'])
+            })
         })
         .preload('assets', (assetQuery) => {
           assetQuery.orderBy('sort_order', 'asc').orderBy('created_at', 'asc')
@@ -939,28 +949,50 @@ export default class PropertiesController {
             .orWhere('address', 'ILIKE', `%${searchQuery}%`)
             .orWhere('city', 'ILIKE', `%${searchQuery}%`)
             .orWhere('neighborhood', 'ILIKE', `%${searchQuery}%`)
-            .orWhere('zipcode', 'ILIKE', `%${searchQuery}%`)
+            .orWhere('zip', 'ILIKE', `%${searchQuery}%`)
         })
       }
 
       // Apply listing type filter based on search type
       if (type) {
-        switch (type) {
+        switch (type.toLowerCase()) {
           case 'buy':
+          case 'sale':
             query = query.where('listing_type', 'sale')
             break
           case 'rent':
             query = query.where('listing_type', 'rent')
             break
           case 'r2o':
-            query = query.where('listing_type', 'r2o')
+            query = query.where('listing_type', 'R2O')
             break
         }
       }
 
-      // Apply property type filter
+      // Apply property type filter with mapping from Spanish to English
       if (propertyType) {
-        query = query.where('property_type', propertyType)
+        const propertyTypeMapping = {
+          'casas': 'Houses',
+          'casa': 'Houses',
+          'houses': 'Houses',
+          'departamentos': 'Apartments',
+          'departamento': 'Apartments',
+          'apartments': 'Apartments',
+          'oficinas': 'Office',
+          'oficina': 'Office',
+          'office': 'Office',
+          'villas': 'Villa',
+          'villa': 'Villa',
+          'townhouses': 'Townhouse',
+          'townhouse': 'Townhouse',
+          'bungalows': 'Bungalow',
+          'bungalow': 'Bungalow',
+          'lofts': 'Loft',
+          'loft': 'Loft'
+        }
+
+        const mappedType = propertyTypeMapping[propertyType.toLowerCase()] || propertyType
+        query = query.whereRaw("categories::text LIKE ?", [`%"${mappedType}"%`])
       }
 
       // Apply location filter
@@ -988,10 +1020,22 @@ export default class PropertiesController {
 
       // Apply square feet filter
       if (squareFeetMin) {
-        query = query.where('sqft', '>=', parseInt(squareFeetMin))
+        query = query.where('size_sqft', '>=', parseInt(squareFeetMin))
       }
       if (squareFeetMax) {
-        query = query.where('sqft', '<=', parseInt(squareFeetMax))
+        query = query.where('size_sqft', '<=', parseInt(squareFeetMax))
+      }
+
+      // Apply amenities filter
+      if (amenities.trim()) {
+        const amenitiesArray = amenities.split(',').map(a => a.trim()).filter(a => a.length > 0)
+        if (amenitiesArray.length > 0) {
+          query = query.where((queryBuilder) => {
+            for (const amenity of amenitiesArray) {
+              queryBuilder.whereRaw("amenities::text LIKE ?", [`%"${amenity}"%`])
+            }
+          })
+        }
       }
 
       // Apply income-based filter

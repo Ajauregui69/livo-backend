@@ -2,7 +2,7 @@ import type { HttpContext } from '@adonisjs/core/http'
 import { DateTime } from 'luxon'
 import User from '#models/user'
 import Agent from '#models/agent'
-import Agency from '#models/agency'
+// import Agency from '#models/agency'
 import EmailVerificationToken from '#models/email_verification_token'
 import VerifyEmailMail from '#mails/verify_email_mail'
 import mail from '@adonisjs/mail/services/main'
@@ -47,24 +47,35 @@ export default class AuthController {
         await user.save()
       }
 
-      return response.status(201).json({
-        message: emailSent 
-          ? 'Usuario registrado exitosamente. Por favor, revisa tu correo electrónico para verificar tu cuenta.'
-          : 'Usuario registrado exitosamente. Email de verificación no enviado (SMTP no configurado).',
-        user: {
-          id: user.id,
-          firstName: user.firstName,
-          lastName: user.lastName,
+      // If email was sent successfully, user needs verification
+      if (emailSent) {
+        return response.status(201).json({
+          message: 'Usuario registrado exitosamente. Por favor, revisa tu correo electrónico para verificar tu cuenta.',
+          requiresEmailVerification: true,
+          emailSent: true,
           email: user.email,
-          role: user.role,
-          status: user.status,
-          companyName: user.companyName,
-          licenseNumber: user.licenseNumber,
-          emailVerified: !!user.emailVerifiedAt
-        },
-        requiresEmailVerification: emailSent && !user.emailVerifiedAt,
-        emailSent
-      })
+          // No incluir datos del usuario para evitar auto-login
+          redirectToLogin: true
+        })
+      } else {
+        // Si no se pudo enviar email, activar usuario automáticamente (desarrollo)
+        return response.status(201).json({
+          message: 'Usuario registrado exitosamente. Email de verificación no enviado (SMTP no configurado).',
+          user: {
+            id: user.id,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            email: user.email,
+            role: user.role,
+            status: user.status,
+            companyName: user.companyName,
+            licenseNumber: user.licenseNumber,
+            emailVerified: !!user.emailVerifiedAt
+          },
+          requiresEmailVerification: false,
+          emailSent: false
+        })
+      }
     } catch (error) {
       return response.status(400).json({
         message: 'Error al registrar usuario',

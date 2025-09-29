@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Verifica tu cuenta - LIVO</title>
+    <title>Verifica tu cuenta - {{ env('APP_NAME', 'havi.app') }}</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
@@ -56,14 +56,14 @@
 </head>
 <body>
     <div class="header">
-        <div class="logo">🏠 LIVO</div>
+        <img src="{{ env('FRONTEND_URL', 'http://localhost:3000') }}/images/logo-header.png" alt="{{ env('APP_NAME', 'havi.app') }}" style="max-width: 200px; height: auto; margin-bottom: 20px;" />
         <h1>Verifica tu cuenta</h1>
     </div>
 
     <div class="content">
         <h2>¡Hola {{ user.firstName }}!</h2>
         
-        <p>Gracias por registrarte en LIVO, tu plataforma inmobiliaria de confianza.</p>
+        <p>Gracias por registrarte en <strong>{{ env('APP_NAME', 'havi.app') }}</strong>, tu plataforma inmobiliaria de confianza.</p>
         
         <p>Para completar tu registro y activar tu cuenta, necesitas verificar tu dirección de correo electrónico haciendo clic en el botón de abajo:</p>
         
@@ -81,7 +81,7 @@
 
     <div class="footer">
         <p>Si no solicitaste esta cuenta, puedes ignorar este correo electrónico.</p>
-        <p>© {{ new Date().getFullYear() }} LIVO - Plataforma Inmobiliaria</p>
+        <p>© {{ new Date().getFullYear() }} {{ env('APP_NAME', 'havi.app') }} - Plataforma Inmobiliaria</p>
     </div>
 </body>
 </html>

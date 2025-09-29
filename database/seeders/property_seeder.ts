@@ -338,14 +338,14 @@ export default class extends BaseSeeder {
     await Property.query().where('user_id', userId).delete()
 
     // Insert new properties
-    const createdProperties = await Property.createMany(properties)
+    await Property.createMany(properties)
 
     // Create some sample assets (images) for the first few properties
     const sampleAssets = [
       // Property 1 - Casa de Lujo
       {
         propertyId: propertyIds[0],
-        type: 'image',
+        type: 'image' as const,
         fileName: 'luxury-house-1.jpg',
         filePath: '/images/listings/luxury-house-1.jpg',
         fileUrl: '/images/listings/luxury-house-1.jpg',
@@ -355,7 +355,7 @@ export default class extends BaseSeeder {
       },
       {
         propertyId: propertyIds[0],
-        type: 'image',
+        type: 'image' as const,
         fileName: 'luxury-house-2.jpg',
         filePath: '/images/listings/luxury-house-2.jpg',
         fileUrl: '/images/listings/luxury-house-2.jpg',
@@ -366,7 +366,7 @@ export default class extends BaseSeeder {
       // Property 2 - Apartamento Barcelona
       {
         propertyId: propertyIds[1],
-        type: 'image',
+        type: 'image' as const,
         fileName: 'apartment-bcn-1.jpg',
         filePath: '/images/listings/apartment-bcn-1.jpg',
         fileUrl: '/images/listings/apartment-bcn-1.jpg',
@@ -377,7 +377,7 @@ export default class extends BaseSeeder {
       // Property 3 - Villa Valencia
       {
         propertyId: propertyIds[2],
-        type: 'image',
+        type: 'image' as const,
         fileName: 'villa-valencia-1.jpg',
         filePath: '/images/listings/villa-valencia-1.jpg',
         fileUrl: '/images/listings/villa-valencia-1.jpg',
@@ -387,7 +387,7 @@ export default class extends BaseSeeder {
       },
       {
         propertyId: propertyIds[2],
-        type: 'image',
+        type: 'image' as const,
         fileName: 'villa-valencia-pool.jpg',
         filePath: '/images/listings/villa-valencia-pool.jpg',
         fileUrl: '/images/listings/villa-valencia-pool.jpg',

@@ -110,6 +110,15 @@ router.group(() => {
   
 }).prefix('/api')
 
+// Home/Statistics routes
+router.get('/api/home', '#controllers/home_controller.index')
+
+// Blog routes
+router.group(() => {
+  router.get('/blogs', '#controllers/blogs_controller.index')
+  router.get('/blogs/:slug', '#controllers/blogs_controller.show')
+}).prefix('/api')
+
 // AI Analysis and Document Upload routes
 router.group(() => {
   // AI Analysis routes
@@ -123,5 +132,6 @@ router.group(() => {
   router.get('/documents', '#controllers/document_controller.getUserDocuments')
   router.delete('/documents/:documentId', '#controllers/document_controller.deleteDocument')
   router.get('/documents/:documentId/status', '#controllers/document_controller.getDocumentStatus')
+  router.get('/documents/:documentId/url', '#controllers/document_controller.getDocumentUrl')
   router.post('/documents/:documentId/reprocess', '#controllers/document_controller.reprocessDocument')
 }).prefix('/api/ai').use(middleware.auth())

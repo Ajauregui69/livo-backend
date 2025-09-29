@@ -1,7 +1,6 @@
 import { BaseSeeder } from '@adonisjs/lucid/seeders'
 import User from '#models/user'
 import CreditScore from '#models/credit_score'
-import hash from '@adonisjs/core/services/hash'
 import { DateTime } from 'luxon'
 
 export default class extends BaseSeeder {

@@ -1,7 +1,7 @@
 import type { HttpContext } from '@adonisjs/core/http'
 import CreditAnalysis from '#models/credit_analysis'
 import DocumentUpload from '#models/document_upload'
-import AiConversation from '#models/ai_conversation'
+// import AiConversation from '#models/ai_conversation'
 import { DateTime } from 'luxon'
 
 export default class AiAnalysisController {
@@ -184,7 +184,8 @@ export default class AiAnalysisController {
           uploaded: !!uploadedDoc,
           status: uploadedDoc?.status || null,
           uploadedAt: uploadedDoc?.createdAt || null,
-          fileName: uploadedDoc?.fileName || null
+          fileName: uploadedDoc?.fileName || null,
+          id: uploadedDoc?.id || null
         }
       })
 

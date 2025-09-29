@@ -197,9 +197,9 @@ export default class AgentsController {
       ])
 
       // Remove any name, email, password fields from agentData if they exist
-      delete agentData.name
-      delete agentData.email
-      delete agentData.password
+      delete (agentData as any).name
+      delete (agentData as any).email
+      delete (agentData as any).password
 
       // Check if user with this email already exists
       const existingUser = await User.findBy('email', userData.email)
@@ -299,9 +299,9 @@ export default class AgentsController {
       ])
 
       // Remove any name, email, password fields from agentData if they exist
-      delete agentData.name
-      delete agentData.email
-      delete agentData.password
+      delete (agentData as any).name
+      delete (agentData as any).email
+      delete (agentData as any).password
 
       // Update agent data
       agent.merge(agentData)

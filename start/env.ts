@@ -39,6 +39,16 @@ export default await Env.create(new URL('../', import.meta.url), {
 
   /*
   |----------------------------------------------------------
+  | Variables for configuring AWS S3
+  |----------------------------------------------------------
+  */
+  AWS_ACCESS_KEY_ID: Env.schema.string(),
+  AWS_SECRET_ACCESS_KEY: Env.schema.string(),
+  AWS_REGION: Env.schema.string(),
+  AWS_S3_BUCKET: Env.schema.string(),
+
+  /*
+  |----------------------------------------------------------
   | Variables for configuring OAuth providers
   |----------------------------------------------------------
   */

@@ -267,7 +267,6 @@ export default class AgenciesController {
       const agent = await Agent.create({
         ...agentData,
         agencyId: agency.id,
-        role: 'agent',
         isActive: true
       })
 
@@ -420,9 +419,9 @@ export default class AgenciesController {
       ])
 
       // Remove any name, email, password fields from agentData if they exist
-      delete agentData.name
-      delete agentData.email
-      delete agentData.password
+      delete (agentData as any).name
+      delete (agentData as any).email
+      delete (agentData as any).password
 
       console.log('🔧 Creating agent with user data:', {
         ...userData,
@@ -561,7 +560,7 @@ export default class AgenciesController {
    */
   async syncAgentsWithUsers({ response, auth }: HttpContext) {
     try {
-      const user = await auth.authenticate()
+      const authUser = await auth.authenticate()
 
       // Get ALL agents from ALL agencies (not just current user's agency)
       const agents = await Agent.query().preload('agency')
@@ -585,10 +584,10 @@ export default class AgenciesController {
           // Create user record for this agent
           await User.create({
             id: agent.id,
-            firstName: agent.name,
+            firstName: agent.fullName || 'Agent',
             lastName: '',
-            email: agent.email,
-            password: agent.password, // Use the same hashed password
+            email: agent.user?.email || `agent_${agent.id}@havi.app`,
+            password: agent.user?.password || 'defaultPassword123',
             role: 'agent',
             status: 'active',
             emailVerifiedAt: DateTime.now()
