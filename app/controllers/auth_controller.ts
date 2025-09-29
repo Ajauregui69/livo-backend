@@ -15,68 +15,64 @@ export default class AuthController {
    */
   async register({ request, response }: HttpContext) {
     const payload = await request.validateUsing(registerValidator)
-    
+
+    // Use database transaction to ensure atomicity
+    const trx = await User.query().knexQuery().transaction()
+
     try {
       // For direct registration (non-OAuth), set status as 'pending' until email is verified
       const userData = {
         ...payload,
-        status: 'pending', // User needs to verify email
+        status: 'pending' as const, // User needs to verify email
         emailVerifiedAt: null
       }
 
-      const user = await User.create(userData)
-      
-      let emailSent = false
+      const user = await User.create(userData, { client: trx })
+
       let verificationToken = null
-      
+
       try {
-        // Generate verification token and send email (optional)
+        // Generate verification token
         verificationToken = await EmailVerificationToken.createForUser(user.id, user.email)
 
-        // Try to send verification email (skip if SMTP not configured)
-        // For production: Configure proper SMTP credentials in .env
-        // For development: MailHog/Mailpit can be used on localhost:1025, or this will auto-activate users
-        await mail.send(new VerifyEmailMail(user, verificationToken.token))
-        emailSent = true
+        // Try to send verification email with timeout (10 seconds)
+        const emailPromise = mail.send(new VerifyEmailMail(user, verificationToken.token))
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Email timeout')), 10000)
+        )
+
+        await Promise.race([emailPromise, timeoutPromise])
+
+        // Commit transaction since email was sent successfully
+        await trx.commit()
       } catch (emailError) {
-        console.log('Email not sent (SMTP not configured):', emailError.message)
-        // For development/testing, mark user as active if email can't be sent
-        // This allows development to work without requiring SMTP setup
-        user.status = 'active'
-        user.emailVerifiedAt = DateTime.now()
-        await user.save()
+        console.log(`${DateTime.now().toISO()}: Email not sent:`, emailError.message)
+
+        // Rollback the user creation since email failed
+        await trx.rollback()
+
+        return response.status(400).json({
+          message: 'Error al registrar usuario. No se pudo enviar el correo de verificación. Por favor, intenta nuevamente.',
+          error: 'Email service unavailable',
+          emailError: emailError.message
+        })
       }
 
       // If email was sent successfully, user needs verification
-      if (emailSent) {
-        return response.status(201).json({
-          message: 'Usuario registrado exitosamente. Por favor, revisa tu correo electrónico para verificar tu cuenta.',
-          requiresEmailVerification: true,
-          emailSent: true,
-          email: user.email,
-          // No incluir datos del usuario para evitar auto-login
-          redirectToLogin: true
-        })
-      } else {
-        // Si no se pudo enviar email, activar usuario automáticamente (desarrollo)
-        return response.status(201).json({
-          message: 'Usuario registrado exitosamente. Email de verificación no enviado (SMTP no configurado).',
-          user: {
-            id: user.id,
-            firstName: user.firstName,
-            lastName: user.lastName,
-            email: user.email,
-            role: user.role,
-            status: user.status,
-            companyName: user.companyName,
-            licenseNumber: user.licenseNumber,
-            emailVerified: !!user.emailVerifiedAt
-          },
-          requiresEmailVerification: false,
-          emailSent: false
-        })
-      }
+      return response.status(201).json({
+        message: 'Usuario registrado exitosamente. Por favor, revisa tu correo electrónico para verificar tu cuenta.',
+        requiresEmailVerification: true,
+        emailSent: true,
+        email: user.email,
+        redirectToLogin: true
+      })
+
     } catch (error) {
+      // Rollback transaction on any other error
+      if (!trx.isCompleted()) {
+        await trx.rollback()
+      }
+
       return response.status(400).json({
         message: 'Error al registrar usuario',
         error: error.message

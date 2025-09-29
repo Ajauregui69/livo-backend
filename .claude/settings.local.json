@@ -28,7 +28,15 @@
       "Bash(git rm:*)",
       "Bash(git filter-branch:*)",
       "Bash(git config:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(nslookup:*)",
+      "Bash(dig:*)",
+      "Bash(ping:*)",
+      "Bash(./setup-https.sh:*)",
+      "Read(//home/alonso/projects/**)",
+      "Bash(cat:*)",
+      "Bash(scp:*)",
+      "Bash(tar:*)"
     ],
     "deny": []
   }
