@@ -1,5 +1,5 @@
-import { BaseCommand } from '@adonisjs/core/commands'
-import type { CommandOptions } from '@adonisjs/core/types'
+import { BaseCommand } from '@adonisjs/core/ace'
+import type { CommandOptions } from '@adonisjs/core/types/ace'
 import Asset from '#models/asset'
 
 export default class CleanBlobAssets extends BaseCommand {

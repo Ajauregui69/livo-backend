@@ -1,7 +1,8 @@
 import { DateTime } from 'luxon'
-import { BaseModel, column, belongsTo, beforeCreate } from '@adonisjs/lucid/orm'
-import type { BelongsTo } from '@adonisjs/lucid/types/relations'
+import { BaseModel, column, belongsTo, hasOne, beforeCreate } from '@adonisjs/lucid/orm'
+import type { BelongsTo, HasOne } from '@adonisjs/lucid/types/relations'
 import User from '#models/user'
+import DocumentReview from '#models/document_review'
 import { randomUUID } from 'node:crypto'
 
 export default class DocumentUpload extends BaseModel {
@@ -47,6 +48,11 @@ export default class DocumentUpload extends BaseModel {
   // Relationships
   @belongsTo(() => User)
   declare user: BelongsTo<typeof User>
+
+  @hasOne(() => DocumentReview, {
+    foreignKey: 'documentUploadId'
+  })
+  declare review: HasOne<typeof DocumentReview>
 
   // Hooks
   @beforeCreate()

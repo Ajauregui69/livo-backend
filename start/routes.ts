@@ -19,6 +19,9 @@ router.get('/', async () => {
   }
 })
 
+// S3 Proxy for development (avoids SSL cert issues with bucket names containing dots)
+router.get('/api/s3-proxy/*', '#controllers/s3_proxy_controller.proxy')
+
 // Authentication routes
 router.group(() => {
   router.post('/register', '#controllers/auth_controller.register')
@@ -59,6 +62,9 @@ router.group(() => {
   // Agent routes - public
   router.get('/agents', '#controllers/agents_controller.index')
   router.get('/agents/:id', '#controllers/agents_controller.show')
+
+  // Contact form route - public (no auth required)
+  router.post('/messages', '#controllers/messages_controller.store')
   
   // Agency routes - public
   router.get('/agencies', '#controllers/agencies_controller.index')
@@ -106,6 +112,12 @@ router.group(() => {
     router.post('/agencies/current/sync-agents', '#controllers/agencies_controller.syncAgentsWithUsers')
     router.get('/agencies/:id/agents', '#controllers/agencies_controller.getAgents')
     router.post('/agencies/:id/agents', '#controllers/agencies_controller.createAgent')
+
+    // Messages routes - protected
+    router.get('/messages', '#controllers/messages_controller.index')
+    router.get('/messages/:id', '#controllers/messages_controller.show')
+    router.put('/messages/:id/status', '#controllers/messages_controller.updateStatus')
+
   }).use(middleware.auth())
   
 }).prefix('/api')
@@ -126,7 +138,7 @@ router.group(() => {
   router.post('/analysis/request', '#controllers/ai_analysis_controller.requestAnalysis')
   router.get('/analysis/status/:analysisId', '#controllers/ai_analysis_controller.getAnalysisStatus')
   router.get('/documents/summary', '#controllers/ai_analysis_controller.getDocumentsSummary')
-  
+
   // Document upload routes
   router.post('/documents/upload', '#controllers/document_controller.upload')
   router.get('/documents', '#controllers/document_controller.getUserDocuments')
@@ -134,4 +146,17 @@ router.group(() => {
   router.get('/documents/:documentId/status', '#controllers/document_controller.getDocumentStatus')
   router.get('/documents/:documentId/url', '#controllers/document_controller.getDocumentUrl')
   router.post('/documents/:documentId/reprocess', '#controllers/document_controller.reprocessDocument')
+  router.post('/documents/:documentId/rate', '#controllers/document_controller.rateDocument')
+
+  // Document review routes (admin/agency_admin only)
+  router.get('/reviews', '#controllers/document_review_controller.getPendingReviews')
+  router.get('/reviews/stats', '#controllers/document_review_controller.getReviewStats')
+  router.get('/reviews/:reviewId', '#controllers/document_review_controller.getReview')
+  router.post('/reviews/:reviewId/assign', '#controllers/document_review_controller.assignReview')
+  router.put('/reviews/:reviewId', '#controllers/document_review_controller.updateReview')
+
+  // Users management for ML dashboard (admin/agency_admin only)
+  router.get('/users', '#controllers/document_review_controller.getUsers')
+  router.get('/users/:userId/documents', '#controllers/document_review_controller.getUserDocuments')
+  router.get('/users/:userId/documents/download-zip', '#controllers/document_review_controller.downloadUserDocumentsZip')
 }).prefix('/api/ai').use(middleware.auth())

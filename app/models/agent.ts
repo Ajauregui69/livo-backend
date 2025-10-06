@@ -1,6 +1,6 @@
 import { DateTime } from 'luxon'
 import hash from '@adonisjs/core/services/hash'
-import { BaseModel, column, hasMany, belongsTo, beforeCreate } from '@adonisjs/lucid/orm'
+import { BaseModel, column, hasMany, belongsTo, beforeCreate, computed } from '@adonisjs/lucid/orm'
 import type { HasMany, BelongsTo } from '@adonisjs/lucid/types/relations'
 import Property from '#models/property'
 import Agency from '#models/agency'
@@ -114,6 +114,7 @@ export default class Agent extends BaseModel {
   declare properties: HasMany<typeof Property>
 
   // Computed properties
+  @computed()
   get name() {
     if (this.user) {
       return `${this.user.firstName} ${this.user.lastName}`.trim()
@@ -121,6 +122,12 @@ export default class Agent extends BaseModel {
     return 'Agent'
   }
 
+  @computed()
+  get email() {
+    return this.user?.email || null
+  }
+
+  @computed()
   get fullContactInfo() {
     const contacts = []
     if (this.phone1) contacts.push(this.phone1)
@@ -129,6 +136,7 @@ export default class Agent extends BaseModel {
     return contacts.join(' | ')
   }
 
+  @computed()
   get fullName() {
     if (this.user) {
       return `${this.user.firstName} ${this.user.lastName}`
@@ -136,6 +144,7 @@ export default class Agent extends BaseModel {
     return 'Agent'
   }
 
+  @computed()
   get averageRating() {
     return this.rating || 0
   }

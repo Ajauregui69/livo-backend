@@ -6,6 +6,7 @@ import Agent from '#models/agent'
 import EmailVerificationToken from '#models/email_verification_token'
 import VerifyEmailMail from '#mails/verify_email_mail'
 import mail from '@adonisjs/mail/services/main'
+import SendGridService from '#services/sendgrid_service'
 import { loginValidator, registerValidator } from '#validators/auth'
 import { updateProfileValidator } from '#validators/update_profile'
 
@@ -16,9 +17,6 @@ export default class AuthController {
   async register({ request, response }: HttpContext) {
     const payload = await request.validateUsing(registerValidator)
 
-    // Use database transaction to ensure atomicity
-    const trx = await User.query().knexQuery().transaction()
-
     try {
       // For direct registration (non-OAuth), set status as 'pending' until email is verified
       const userData = {
@@ -27,52 +25,73 @@ export default class AuthController {
         emailVerifiedAt: null
       }
 
-      const user = await User.create(userData, { client: trx })
+      const user = await User.create(userData)
 
       let verificationToken = null
+
+      let emailSent = false
 
       try {
         // Generate verification token
         verificationToken = await EmailVerificationToken.createForUser(user.id, user.email)
 
-        // Try to send verification email with timeout (10 seconds)
-        const emailPromise = mail.send(new VerifyEmailMail(user, verificationToken.token))
+        // Try to send verification email with timeout (10 seconds) using SendGrid API
+        const emailPromise = SendGridService.sendVerificationEmail(
+          user.email,
+          user.firstName,
+          verificationToken.token
+        )
         const timeoutPromise = new Promise((_, reject) =>
           setTimeout(() => reject(new Error('Email timeout')), 10000)
         )
 
         await Promise.race([emailPromise, timeoutPromise])
-
-        // Commit transaction since email was sent successfully
-        await trx.commit()
+        emailSent = true
       } catch (emailError) {
         console.log(`${DateTime.now().toISO()}: Email not sent:`, emailError.message)
 
-        // Rollback the user creation since email failed
-        await trx.rollback()
+        // En desarrollo, auto-verificar si el email falla
+        if (process.env.NODE_ENV === 'development') {
+          console.log('⚠️  DEVELOPMENT MODE: Auto-verificando usuario porque el email falló')
+          user.status = 'active'
+          user.emailVerifiedAt = DateTime.now()
+          await user.save()
 
-        return response.status(400).json({
-          message: 'Error al registrar usuario. No se pudo enviar el correo de verificación. Por favor, intenta nuevamente.',
-          error: 'Email service unavailable',
-          emailError: emailError.message
-        })
+          // Crear token de acceso para login automático
+          const token = await User.accessTokens.create(user)
+
+          return response.status(201).json({
+            message: 'Usuario registrado exitosamente (email no enviado pero verificado automáticamente en desarrollo).',
+            requiresEmailVerification: false,
+            emailSent: false,
+            user: {
+              id: user.id,
+              firstName: user.firstName,
+              lastName: user.lastName,
+              email: user.email,
+              role: user.role,
+              status: user.status
+            },
+            token: token.value!.release()
+          })
+        }
+
+        // En producción, solo marcar que el email falló
+        emailSent = false
       }
 
-      // If email was sent successfully, user needs verification
+      // Usuario creado exitosamente (con o sin email)
       return response.status(201).json({
-        message: 'Usuario registrado exitosamente. Por favor, revisa tu correo electrónico para verificar tu cuenta.',
+        message: emailSent
+          ? 'Usuario registrado exitosamente. Por favor, revisa tu correo electrónico para verificar tu cuenta.'
+          : 'Usuario registrado exitosamente. El correo de verificación no pudo ser enviado, pero puedes solicitarlo nuevamente desde el login.',
         requiresEmailVerification: true,
-        emailSent: true,
+        emailSent: emailSent,
         email: user.email,
         redirectToLogin: true
       })
 
     } catch (error) {
-      // Rollback transaction on any other error
-      if (!trx.isCompleted()) {
-        await trx.rollback()
-      }
-
       return response.status(400).json({
         message: 'Error al registrar usuario',
         error: error.message

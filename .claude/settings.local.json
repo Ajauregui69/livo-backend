@@ -36,7 +36,16 @@
       "Read(//home/alonso/projects/**)",
       "Bash(cat:*)",
       "Bash(scp:*)",
-      "Bash(tar:*)"
+      "Bash(tar:*)",
+      "Bash(pkill:*)",
+      "Bash(ls:*)",
+      "Bash(npx create-next-app@latest:*)",
+      "Bash(npm uninstall:*)",
+      "Bash(npx tailwindcss init:*)",
+      "Bash(psql:*)",
+      "Bash(aws s3api put-bucket-policy:*)",
+      "Bash(aws s3 ls:*)",
+      "Read(//tmp/**)"
     ],
     "deny": []
   }

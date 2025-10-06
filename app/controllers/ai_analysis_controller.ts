@@ -101,19 +101,37 @@ export default class AiAnalysisController {
       // Create new analysis request
       const analysis = await CreditAnalysis.create({
         userId: user.id,
-        status: 'pending',
+        status: 'processing',
         expiresAt: DateTime.now().plus({ days: 30 }) // Válido por 30 días
       })
 
-      // TODO: Queue job to process analysis with AI service
-      // This will be implemented when we create the Python service
-      
-      return response.status(201).json({
-        message: 'Solicitud de análisis creada exitosamente',
-        analysisId: analysis.id,
-        status: analysis.status,
-        estimatedCompletionTime: '5-10 minutos'
-      })
+      // Process credit analysis using scoring service
+      try {
+        const { creditScoringService } = await import('#services/credit_scoring_service')
+        const completedAnalysis = await creditScoringService.createCreditAnalysis(user.id)
+
+        // Eliminar el análisis temporal si se creó uno nuevo
+        if (completedAnalysis.id !== analysis.id) {
+          await analysis.delete()
+        }
+
+        return response.status(201).json({
+          message: 'Análisis completado exitosamente',
+          analysisId: completedAnalysis.id,
+          status: completedAnalysis.status,
+          score: completedAnalysis.internalScore,
+          riskLevel: completedAnalysis.riskLevel
+        })
+      } catch (error) {
+        // Si falla, marcar análisis como fallido
+        analysis.status = 'failed'
+        await analysis.save()
+
+        return response.status(500).json({
+          message: 'Error al procesar análisis crediticio',
+          error: error.message
+        })
+      }
     } catch (error) {
       return response.status(500).json({
         message: 'Error al solicitar análisis crediticio',

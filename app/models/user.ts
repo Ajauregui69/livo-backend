@@ -8,6 +8,7 @@ import type { HasOne, HasMany } from '@adonisjs/lucid/types/relations'
 import CreditScore from '#models/credit_score'
 import Agency from '#models/agency'
 import Agent from '#models/agent'
+import DocumentUpload from '#models/document_upload'
 import { randomUUID } from 'node:crypto'
 
 const AuthFinder = withAuthFinder(() => hash.use('scrypt'), {
@@ -108,6 +109,11 @@ export default class User extends compose(BaseModel, AuthFinder) {
     foreignKey: 'userId'
   })
   declare agentProfile: HasOne<typeof Agent>
+
+  @hasMany(() => DocumentUpload, {
+    foreignKey: 'userId'
+  })
+  declare documentUploads: HasMany<typeof DocumentUpload>
 
   get fullName() {
     return `${this.firstName} ${this.lastName}`

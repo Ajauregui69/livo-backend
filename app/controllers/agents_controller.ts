@@ -3,6 +3,7 @@ import { DateTime } from 'luxon'
 import Agent from '#models/agent'
 import User from '#models/user'
 import Property from '#models/property'
+import Review from '#models/review'
 
 export default class AgentsController {
   /**
@@ -16,7 +17,8 @@ export default class AgentsController {
       const category = request.input('category')
       const search = request.input('search')
 
-      const query = Agent.query()
+      // Get agents from the agents table with their associated users
+      const agentsQuery = Agent.query()
         .where('is_active', true)
         .whereHas('user', (userQuery) => {
           userQuery.whereIn('role', ['agent', 'agency_admin'])
@@ -28,17 +30,17 @@ export default class AgentsController {
           propertiesQuery.where('property_status', 'published').where('listing_status', 'active')
         })
 
-      // Apply filters
+      // Apply filters for agents
       if (city) {
-        query.where('city', 'ILIKE', `%${city}%`)
+        agentsQuery.where('city', 'ILIKE', `%${city}%`)
       }
 
       if (category) {
-        query.where('category', 'ILIKE', `%${category}%`)
+        agentsQuery.where('category', 'ILIKE', `%${category}%`)
       }
 
       if (search) {
-        query.where((builder) => {
+        agentsQuery.where((builder) => {
           builder
             .where('company', 'ILIKE', `%${search}%`)
             .orWhere('city', 'ILIKE', `%${search}%`)
@@ -46,21 +48,76 @@ export default class AgentsController {
       }
 
       // Order by rating desc, then by created_at
-      query.orderBy('rating', 'desc')
+      agentsQuery.orderBy('rating', 'desc')
         .orderBy('created_at', 'desc')
 
-      const agents = await query.paginate(page, limit)
-      
-      // Transform the response to include propertiesCount and flatten the data
+      const agents = await agentsQuery.paginate(page, limit)
+
+      // Get users with role 'agent' that don't have an agent record
+      const userAgentsQuery = User.query()
+        .whereIn('role', ['agent', 'agency_admin'])
+        .whereNotExists((subQuery) => {
+          subQuery.from('agents').whereRaw('agents.user_id = users.id')
+        })
+        .select(['id', 'firstName', 'lastName', 'email', 'phone', 'role', 'city', 'companyName'])
+
+      // Apply search filters for user agents
+      if (search) {
+        userAgentsQuery.where((builder) => {
+          builder
+            .where('firstName', 'ILIKE', `%${search}%`)
+            .orWhere('lastName', 'ILIKE', `%${search}%`)
+            .orWhere('companyName', 'ILIKE', `%${search}%`)
+            .orWhere('city', 'ILIKE', `%${search}%`)
+        })
+      }
+
+      if (city) {
+        userAgentsQuery.where('city', 'ILIKE', `%${city}%`)
+      }
+
+      const userAgents = await userAgentsQuery.limit(limit - agents.length)
+
+      // Transform agents data
       const agentsData = agents.toJSON()
       agentsData.data = agentsData.data.map((agent: any) => ({
         ...agent.$attributes,
-        propertiesCount: agent.$extras?.properties_count || 0
+        propertiesCount: agent.$extras?.properties_count || 0,
+        type: 'agent_record'
       }))
+
+      // Transform user agents data to match agent format
+      const userAgentsData = userAgents.map((user: any) => ({
+        id: user.id, // Use the user ID directly as agent ID
+        name: `${user.firstName} ${user.lastName}`.trim(),
+        email: user.email,
+        phone: user.phone,
+        city: user.city,
+        company: user.companyName || 'Independiente',
+        category: 'Agente',
+        rating: 0,
+        isActive: true,
+        propertiesCount: 0,
+        userId: user.id, // Add userId for reference
+        user: {
+          id: user.id,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          email: user.email,
+          phone: user.phone
+        },
+        type: 'user_agent'
+      }))
+
+      // Combine both datasets
+      const combinedData = {
+        ...agentsData,
+        data: [...agentsData.data, ...userAgentsData]
+      }
 
       return response.ok({
         success: true,
-        data: agentsData,
+        data: combinedData,
         message: 'Agents retrieved successfully'
       })
     } catch (error) {
@@ -77,17 +134,50 @@ export default class AgentsController {
    */
   async show({ params, request, response }: HttpContext) {
     try {
-      const agent = await Agent.query()
-        .where('id', params.id)
+      const agentId = params.id
+      let agent = null
+      let user = null
+      let isUserAgent = false
+
+      // First try to find in agents table
+      agent = await Agent.query()
+        .where('id', agentId)
         .preload('user')
         .preload('agency')
         .first()
 
-      if (!agent) {
-        return response.notFound({
-          success: false,
-          message: 'Agent not found'
-        })
+      if (agent) {
+        user = agent.user
+      } else {
+        // If not found in agents table, try to find user with agent role
+        user = await User.query()
+          .where('id', agentId)
+          .whereIn('role', ['agent', 'agency_admin'])
+          .first()
+
+        if (!user) {
+          return response.notFound({
+            success: false,
+            message: 'Agent not found'
+          })
+        }
+
+        isUserAgent = true
+        // Create agent-like object for user
+        agent = {
+          id: user.id,
+          name: `${user.firstName} ${user.lastName}`.trim(),
+          email: user.email,
+          phone: user.phone,
+          city: user.city,
+          company: user.companyName || 'Independiente',
+          category: 'Agente',
+          rating: 0,
+          isActive: true,
+          user: user,
+          agency: null,
+          type: 'user_agent'
+        }
       }
 
       // Get agent's properties with pagination
@@ -96,7 +186,7 @@ export default class AgentsController {
       const propertyType = request.input('type') // 'sale' or 'rent'
 
       const propertiesQuery = Property.query()
-        .where('agent_id', agent.id)
+        .where(isUserAgent ? 'user_id' : 'agent_id', agentId)
         .where('property_status', 'published')
         .where('listing_status', 'active')
         .preload('assets')
@@ -111,20 +201,20 @@ export default class AgentsController {
 
       // Get properties count by type
       const totalCountResult = await Property.query()
-        .where('agent_id', agent.id)
+        .where(isUserAgent ? 'user_id' : 'agent_id', agentId)
         .where('property_status', 'published')
         .where('listing_status', 'active')
         .count('* as total')
-      
+
       const saleCountResult = await Property.query()
-        .where('agent_id', agent.id)
+        .where(isUserAgent ? 'user_id' : 'agent_id', agentId)
         .where('property_status', 'published')
         .where('listing_status', 'active')
         .where('listing_type', 'sale')
         .count('* as total')
-      
+
       const rentCountResult = await Property.query()
-        .where('agent_id', agent.id)
+        .where(isUserAgent ? 'user_id' : 'agent_id', agentId)
         .where('property_status', 'published')
         .where('listing_status', 'active')
         .where('listing_type', 'rent')
@@ -136,12 +226,26 @@ export default class AgentsController {
         forRent: parseInt(rentCountResult[0].$extras.total) || 0
       }
 
+      // Get reviews for this agent/user
+      let reviews = []
+      try {
+        reviews = await Review.query()
+          .where('agent_id', agentId)
+          .preload('user')
+          .orderBy('created_at', 'desc')
+      } catch (reviewError) {
+        console.log('Reviews error:', reviewError.message)
+        reviews = []
+      }
+
       return response.ok({
         success: true,
         data: {
-          agent: agent.toJSON(),
+          agent: isUserAgent ? agent : agent.toJSON(),
           properties: properties.toJSON(),
-          propertiesCount
+          propertiesCount,
+          reviews,
+          isUserAgent
         },
         message: 'Agent details retrieved successfully'
       })

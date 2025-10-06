@@ -2,6 +2,7 @@ import type { HttpContext } from '@adonisjs/core/http'
 import { DateTime } from 'luxon'
 import Property from '#models/property'
 import Asset from '#models/asset'
+import Agent from '#models/agent'
 import vine from '@vinejs/vine'
 
 export default class PropertiesController {
@@ -104,15 +105,19 @@ export default class PropertiesController {
           userQuery.select(['id', 'firstName', 'lastName', 'email', 'phone', 'role', 'companyName'])
         })
         .preload('agent', (agentQuery) => {
-          agentQuery.select(['id', 'phone_1', 'phone_2', 'company', 'image'])
-            .preload('user', (userQuery) => {
-              userQuery.select(['id', 'firstName', 'lastName', 'email'])
-            })
+          agentQuery.select(['id', 'phone1', 'phone2', 'company', 'image', 'userId'])
         })
         .preload('assets', (assetQuery) => {
           assetQuery.orderBy('sort_order', 'asc').orderBy('created_at', 'asc')
         })
         .first()
+
+      // Manually load agent's user if agent exists and has userId
+      if (property && property.agent && property.agent.userId) {
+        await property.agent.load('user', (userQuery) => {
+          userQuery.select(['id', 'firstName', 'lastName', 'email', 'phone'])
+        })
+      }
 
       if (!property) {
         return response.notFound({
@@ -127,18 +132,15 @@ export default class PropertiesController {
 
       console.log('=== SHOW PROPERTY DEBUG ===')
       console.log('Property ID:', property.id)
-      console.log('Assets count:', property.assets?.length || 0)
-      if (property.assets && property.assets.length > 0) {
-        console.log(
-          'Assets:',
-          property.assets.map((asset) => ({
-            id: asset.id,
-            type: asset.type,
-            fileUrl: asset.fileUrl,
-            sortOrder: asset.sortOrder,
-          }))
-        )
+      console.log('Agent ID:', property.agentId)
+      console.log('Agent exists:', !!property.agent)
+      if (property.agent) {
+        console.log('Agent userId:', property.agent.userId)
+        console.log('Agent user exists:', !!property.agent.user)
+        console.log('Agent company:', property.agent.company)
+        console.log('Agent phone1:', property.agent.phone1)
       }
+      console.log('Assets count:', property.assets?.length || 0)
       console.log('===========================')
 
       return response.ok({
@@ -242,6 +244,7 @@ export default class PropertiesController {
           mlsNumber: vine.string().optional().nullable(),
           yearlyTaxRate: vine.number().min(0).max(999999).optional().nullable(),
           afterPriceLabel: vine.string().optional().nullable(),
+          agentId: vine.string().optional().nullable(), // Allow specifying agent
         })
       )
 
@@ -268,6 +271,31 @@ export default class PropertiesController {
       propertyData.propertyStatus = 'draft'
       propertyData.listingStatus = propertyData.listingStatus || 'active'
 
+      // Handle agent assignment
+      let finalAgentId = propertyData.agentId // Use specified agentId if provided
+
+      // If no agentId specified and user is agent or agency_admin, auto-assign
+      if (!finalAgentId && (user.role === 'agent' || user.role === 'agency_admin')) {
+        const agentProfile = await Agent.query()
+          .where('user_id', user.id)
+          .first()
+
+        if (agentProfile) {
+          finalAgentId = agentProfile.id
+        } else {
+          const newAgentProfile = await Agent.create({
+            userId: user.id,
+            isActive: true,
+            rating: 0,
+            reviewsCount: 0
+          })
+          finalAgentId = newAgentProfile.id
+        }
+      }
+
+      // Remove agentId from propertyData to avoid duplication
+      delete propertyData.agentId
+
       let property;
 
       // Check if updating existing draft or creating new one
@@ -281,13 +309,17 @@ export default class PropertiesController {
         if (property) {
           // Update existing property (only if it's a draft or belongs to user)
           if (property.propertyStatus === 'draft' || property.userId === user.id) {
-            await property.merge(propertyData).save()
+            await property.merge({
+              ...propertyData,
+              agentId: finalAgentId || property.agentId // Keep existing if no new agentId
+            }).save()
             console.log('Updated existing draft:', property.id)
           } else {
             // If property exists but is not a draft, create new draft
             delete propertyData.id // Remove ID to create new
             property = await Property.create({
               userId: user.id,
+              agentId: finalAgentId,
               ...propertyData,
             })
             console.log('Created new draft from published property:', property.id)
@@ -296,6 +328,7 @@ export default class PropertiesController {
           // Property not found or doesn't belong to user, create new
           property = await Property.create({
             userId: user.id,
+            agentId: finalAgentId,
             ...propertyData,
           })
           console.log('Created new draft (property not found):', property.id)
@@ -304,6 +337,7 @@ export default class PropertiesController {
         // Create new draft property
         property = await Property.create({
           userId: user.id,
+          agentId: finalAgentId,
           ...propertyData,
         })
         console.log('Created new draft:', property.id)
@@ -415,6 +449,7 @@ export default class PropertiesController {
           propertyStatus: vine.enum(['pending', 'processing', 'published']).optional().nullable(),
           yearlyTaxRate: vine.number().min(0).max(999999).optional(), // Max $999K tax rate
           afterPriceLabel: vine.string().optional().nullable(),
+          agentId: vine.string().optional().nullable(), // Allow specifying agent
 
           // Location
           city: vine.string().optional().nullable(),
@@ -486,9 +521,38 @@ export default class PropertiesController {
       console.log('Final propertyData:', JSON.stringify(propertyData, null, 2))
       console.log('=================================')
 
+      // Handle agent assignment
+      let finalAgentId = propertyData.agentId // Use specified agentId if provided
+
+      // If no agentId specified and user is agent or agency_admin, auto-assign
+      if (!finalAgentId && (user.role === 'agent' || user.role === 'agency_admin')) {
+        const agentProfile = await Agent.query()
+          .where('user_id', user.id)
+          .first()
+
+        if (agentProfile) {
+          finalAgentId = agentProfile.id
+          console.log(`Auto-assigning agent ${finalAgentId} to property`)
+        } else {
+          // If no agent profile exists, create one
+          const newAgentProfile = await Agent.create({
+            userId: user.id,
+            isActive: true,
+            rating: 0,
+            reviewsCount: 0
+          })
+          finalAgentId = newAgentProfile.id
+          console.log(`Created new agent profile ${finalAgentId} for user ${user.id}`)
+        }
+      }
+
+      // Remove agentId from propertyData to avoid duplication
+      delete propertyData.agentId
+
       // Create the property first (without JSON image/video fields)
       const property = await Property.create({
         userId: user.id,
+        agentId: finalAgentId,
         ...propertyData,
       })
 
@@ -847,33 +911,113 @@ export default class PropertiesController {
 
       let properties;
 
-      // If user is an agent, get properties assigned to them
-      if (user.role === 'agent') {
-        properties = await Property.query()
-          .where('agent_id', user.id)
-          .preload('user', (userQuery) => {
-            userQuery.select(['id', 'firstName', 'lastName', 'email', 'phone', 'role'])
-          })
-          .preload('agent', (agentQuery) => {
-            agentQuery.select(['id', 'name', 'email', 'phone1', 'phone2', 'company', 'image'])
-          })
-          .preload('assets', (assetQuery) => {
-            assetQuery.orderBy('sort_order', 'asc').orderBy('created_at', 'asc')
-          })
-          .orderBy('created_at', 'desc')
-          .paginate(page, limit)
+      if (user.role === 'agency_admin') {
+        // Agency admin: Get agent profile to find agency
+        const agentProfile = await Agent.query()
+          .where('user_id', user.id)
+          .first()
+
+        if (!agentProfile || !agentProfile.agencyId) {
+          // If no agency, just show properties they created
+          properties = await Property.query()
+            .where('user_id', user.id)
+            .preload('user', (userQuery) => {
+              userQuery.select(['id', 'firstName', 'lastName', 'email', 'phone', 'role'])
+            })
+            .preload('agent', (agentQuery) => {
+              agentQuery.select(['id', 'phone1', 'phone2', 'company', 'image', 'userId'])
+            })
+            .preload('assets', (assetQuery) => {
+              assetQuery.orderBy('sort_order', 'asc').orderBy('created_at', 'asc')
+            })
+            .orderBy('created_at', 'desc')
+            .paginate(page, limit)
+        } else {
+          // Get all properties from agents in their agency
+          properties = await Property.query()
+            .whereHas('agent', (agentQuery) => {
+              agentQuery.where('agency_id', agentProfile.agencyId)
+            })
+            .preload('user', (userQuery) => {
+              userQuery.select(['id', 'firstName', 'lastName', 'email', 'phone', 'role'])
+            })
+            .preload('agent', (agentQuery) => {
+              agentQuery.select(['id', 'phone1', 'phone2', 'company', 'image', 'userId', 'agencyId'])
+            })
+            .preload('assets', (assetQuery) => {
+              assetQuery.orderBy('sort_order', 'asc').orderBy('created_at', 'asc')
+            })
+            .orderBy('created_at', 'desc')
+            .paginate(page, limit)
+        }
+      } else if (user.role === 'agent') {
+        // Agent: Get agent profile first to get agent ID
+        const agentProfile = await Agent.query()
+          .where('user_id', user.id)
+          .first()
+
+        console.log('=== AGENT PROFILE DEBUG ===')
+        console.log('User ID:', user.id)
+        console.log('Agent Profile found:', !!agentProfile)
+        if (agentProfile) {
+          console.log('Agent ID:', agentProfile.id)
+        }
+        console.log('===========================')
+
+        if (!agentProfile) {
+          // No agent profile, just show properties they created
+          properties = await Property.query()
+            .where('user_id', user.id)
+            .preload('user', (userQuery) => {
+              userQuery.select(['id', 'firstName', 'lastName', 'email', 'phone', 'role'])
+            })
+            .preload('agent', (agentQuery) => {
+              agentQuery.select(['id', 'phone1', 'phone2', 'company', 'image', 'userId'])
+            })
+            .preload('assets', (assetQuery) => {
+              assetQuery.orderBy('sort_order', 'asc').orderBy('created_at', 'asc')
+            })
+            .orderBy('created_at', 'desc')
+            .paginate(page, limit)
+        } else {
+          // Get properties assigned to agent profile OR created by user
+          properties = await Property.query()
+            .where((query) => {
+              query.where('agent_id', agentProfile.id).orWhere('user_id', user.id)
+            })
+            .preload('user', (userQuery) => {
+              userQuery.select(['id', 'firstName', 'lastName', 'email', 'phone', 'role'])
+            })
+            .preload('agent', (agentQuery) => {
+              agentQuery.select(['id', 'phone1', 'phone2', 'company', 'image', 'userId'])
+            })
+            .preload('assets', (assetQuery) => {
+              assetQuery.orderBy('sort_order', 'asc').orderBy('created_at', 'asc')
+            })
+            .orderBy('created_at', 'desc')
+            .paginate(page, limit)
+        }
       } else {
         // For property owners, get properties they own
         properties = await Property.query()
           .where('user_id', user.id)
           .preload('agent', (agentQuery) => {
-            agentQuery.select(['id', 'name', 'email', 'phone1', 'phone2', 'company', 'image'])
+            agentQuery.select(['id', 'phone1', 'phone2', 'company', 'image', 'userId'])
           })
           .preload('assets', (assetQuery) => {
             assetQuery.orderBy('sort_order', 'asc').orderBy('created_at', 'asc')
           })
           .orderBy('created_at', 'desc')
           .paginate(page, limit)
+      }
+
+      // Manually load agent's user for all properties that have an agent with userId
+      for (const property of properties) {
+        if (property.agent && property.agent.userId) {
+          await property.agent.load('user', (userQuery) => {
+            userQuery.select(['id', 'firstName', 'lastName', 'email', 'phone'])
+          })
+        }
       }
 
       console.log('=== MY PROPERTIES DEBUG ===')
@@ -1161,7 +1305,7 @@ export default class PropertiesController {
             .orderBy('created_at', 'asc')
         })
         .preload('agent', (agentQuery) => {
-          agentQuery.select(['id', 'name', 'email', 'phone1', 'image'])
+          agentQuery.select(['id', 'phone1', 'company', 'image', 'userId'])
         })
         .preload('user', (userQuery) => {
           userQuery.select(['id', 'firstName', 'lastName', 'email'])
@@ -1192,6 +1336,15 @@ export default class PropertiesController {
       // Get initial results
       let similarProperties = await query.limit(parseInt(limit)).exec()
 
+      // Load agent's user for properties that have an agent with userId
+      for (const property of similarProperties) {
+        if (property.agent && property.agent.userId) {
+          await property.agent.load('user', (userQuery) => {
+            userQuery.select(['id', 'firstName', 'lastName', 'email', 'phone'])
+          })
+        }
+      }
+
       // If not enough results, expand search criteria
       if (similarProperties.length < parseInt(limit)) {
         const remainingLimit = parseInt(limit) - similarProperties.length
@@ -1209,7 +1362,7 @@ export default class PropertiesController {
               .orderBy('created_at', 'asc')
           })
           .preload('agent', (agentQuery) => {
-            agentQuery.select(['id', 'name', 'email', 'phone1', 'image'])
+            agentQuery.select(['id', 'phone1', 'company', 'image', 'userId'])
           })
           .preload('user', (userQuery) => {
             userQuery.select(['id', 'firstName', 'lastName', 'email'])
@@ -1226,6 +1379,16 @@ export default class PropertiesController {
         }
 
         const broaderResults = await broaderQuery.limit(remainingLimit).exec()
+
+        // Load agent's user for broader results
+        for (const property of broaderResults) {
+          if (property.agent && property.agent.userId) {
+            await property.agent.load('user', (userQuery) => {
+              userQuery.select(['id', 'firstName', 'lastName', 'email', 'phone'])
+            })
+          }
+        }
+
         similarProperties = [...similarProperties, ...broaderResults]
       }
 
@@ -1245,7 +1408,7 @@ export default class PropertiesController {
               .orderBy('created_at', 'asc')
           })
           .preload('agent', (agentQuery) => {
-            agentQuery.select(['id', 'name', 'email', 'phone1', 'image'])
+            agentQuery.select(['id', 'phone1', 'company', 'image', 'userId'])
           })
           .preload('user', (userQuery) => {
             userQuery.select(['id', 'firstName', 'lastName', 'email'])
@@ -1259,6 +1422,15 @@ export default class PropertiesController {
           .orderByRaw('RANDOM()')
           .limit(remainingLimit)
           .exec()
+
+        // Load agent's user for random results
+        for (const property of randomResults) {
+          if (property.agent && property.agent.userId) {
+            await property.agent.load('user', (userQuery) => {
+              userQuery.select(['id', 'firstName', 'lastName', 'email', 'phone'])
+            })
+          }
+        }
 
         similarProperties = [...similarProperties, ...randomResults]
       }
