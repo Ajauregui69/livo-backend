@@ -652,7 +652,7 @@ export default class AuthController {
       }
 
       // Check if token is expired
-      if (resetToken.expiresAt && DateTime.fromJSDate(resetToken.expiresAt) < DateTime.now()) {
+      if (resetToken.expiresAt && resetToken.expiresAt < DateTime.now()) {
         return response.status(400).json({
           message: 'Token expirado. Por favor, solicita un nuevo enlace de restablecimiento.'
         })
