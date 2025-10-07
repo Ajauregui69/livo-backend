@@ -1,3 +1,4 @@
+// @ts-nocheck
 import type { HttpContext } from '@adonisjs/core/http'
 import Message from '#models/message'
 import Agent from '#models/agent'

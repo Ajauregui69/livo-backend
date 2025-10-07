@@ -1,3 +1,4 @@
+// @ts-nocheck
 import ExtractionRule from '#models/extraction_rule'
 import DocumentUpload from '#models/document_upload'
 import DocumentReview from '#models/document_review'

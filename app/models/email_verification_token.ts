@@ -17,6 +17,9 @@ export default class EmailVerificationToken extends BaseModel {
   @column()
   declare token: string
 
+  @column()
+  declare type: string
+
   @column.dateTime()
   declare expiresAt: DateTime
 
@@ -71,6 +74,7 @@ export default class EmailVerificationToken extends BaseModel {
       userId,
       email,
       token,
+      type: 'email_verification',
       expiresAt,
       used: false
     })

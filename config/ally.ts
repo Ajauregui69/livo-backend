@@ -8,8 +8,8 @@ const allyConfig = defineConfig({
   |--------------------------------------------------------------------------
   */
   google: services.google({
-    clientId: env.get('GOOGLE_CLIENT_ID'),
-    clientSecret: env.get('GOOGLE_CLIENT_SECRET'),
+    clientId: env.get('GOOGLE_CLIENT_ID') || '',
+    clientSecret: env.get('GOOGLE_CLIENT_SECRET') || '',
     callbackUrl: `${env.get('APP_URL')}/auth/google/callback`,
   }),
 
@@ -19,8 +19,8 @@ const allyConfig = defineConfig({
   |--------------------------------------------------------------------------
   */
   facebook: services.facebook({
-    clientId: env.get('FACEBOOK_CLIENT_ID'),
-    clientSecret: env.get('FACEBOOK_CLIENT_SECRET'),
+    clientId: env.get('FACEBOOK_CLIENT_ID') || '',
+    clientSecret: env.get('FACEBOOK_CLIENT_SECRET') || '',
     callbackUrl: `${env.get('APP_URL')}/auth/facebook/callback`,
   }),
 })

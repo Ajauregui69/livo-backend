@@ -560,7 +560,7 @@ export default class AgenciesController {
    */
   async syncAgentsWithUsers({ response, auth }: HttpContext) {
     try {
-      const authUser = await auth.authenticate()
+      await auth.authenticate()
 
       // Get ALL agents from ALL agencies (not just current user's agency)
       const agents = await Agent.query().preload('agency')

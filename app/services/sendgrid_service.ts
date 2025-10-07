@@ -97,6 +97,70 @@ class SendGridService {
       throw error
     }
   }
+
+  async sendPasswordResetEmail(email: string, firstName: string, token: string) {
+    const resetUrl = `${process.env.FRONTEND_URL}/auth/reset-password?token=${token}`
+
+    const htmlContent = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2>Hola ${firstName},</h2>
+        <p>Recibimos una solicitud para restablecer la contraseña de tu cuenta en Havi.app.</p>
+        <p>Si no realizaste esta solicitud, puedes ignorar este correo de forma segura.</p>
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="${resetUrl}" style="background-color: #007bff; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; display: inline-block;">
+            Restablecer mi contraseña
+          </a>
+        </div>
+        <p>Si el botón no funciona, también puedes copiar y pegar este enlace en tu navegador:</p>
+        <p style="word-break: break-all; color: #666;">${resetUrl}</p>
+        <p><strong>Este enlace expirará en 1 hora por seguridad.</strong></p>
+        <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+        <p style="color: #999; font-size: 12px;">
+          Por tu seguridad, todas tus sesiones activas serán cerradas una vez que establezcas tu nueva contraseña.
+        </p>
+      </div>
+    `
+
+    try {
+      // En desarrollo, usar Brevo (SMTP)
+      if (process.env.NODE_ENV === 'development') {
+        console.log('📧 Enviando email de reset de contraseña con Brevo (SMTP)...')
+        const transporter = await this.getBrevoTransporter()
+
+        await transporter.sendMail({
+          from: `"${process.env.MAIL_FROM_NAME}" <${process.env.MAIL_FROM_ADDRESS}>`,
+          to: email,
+          subject: 'Restablece tu contraseña en Havi.app',
+          html: htmlContent
+        })
+
+        console.log('✅ Email de reset enviado exitosamente con Brevo')
+        return true
+      }
+      // En producción, usar SendGrid
+      else {
+        console.log('📧 Enviando email de reset de contraseña con SendGrid...')
+        const sg = await this.getSendGrid()
+
+        const msg = {
+          to: email,
+          from: {
+            email: process.env.MAIL_FROM_ADDRESS || 'no-reply@havi.app',
+            name: process.env.MAIL_FROM_NAME || 'Havi.app'
+          },
+          subject: 'Restablece tu contraseña en Havi.app',
+          html: htmlContent
+        }
+
+        await sg.send(msg)
+        console.log('✅ Email de reset enviado exitosamente con SendGrid')
+        return true
+      }
+    } catch (error) {
+      console.error('❌ Error al enviar email de reset:', error)
+      throw error
+    }
+  }
 }
 
 export default new SendGridService()

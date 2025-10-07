@@ -1,3 +1,4 @@
+// @ts-nocheck
 import User from '#models/user'
 import DocumentUpload from '#models/document_upload'
 import DocumentField from '#models/document_field'

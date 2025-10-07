@@ -26,22 +26,26 @@ router.get('/api/s3-proxy/*', '#controllers/s3_proxy_controller.proxy')
 router.group(() => {
   router.post('/register', '#controllers/auth_controller.register')
   router.post('/login', '#controllers/auth_controller.login')
-  
+
   // Email verification routes
   router.get('/verify-email', '#controllers/auth_controller.verifyEmail')
   router.post('/resend-verification', '#controllers/auth_controller.resendVerificationEmail')
-  
+
+  // Password reset routes
+  router.post('/forgot-password', '#controllers/auth_controller.forgotPassword')
+  router.post('/reset-password', '#controllers/auth_controller.resetPassword')
+
   // OAuth routes
   router.get('/:provider/redirect', '#controllers/auth_controller.redirect')
   router.get('/:provider/callback', '#controllers/auth_controller.callback')
-  
+
   // Protected routes
   router.group(() => {
     router.get('/me', '#controllers/auth_controller.me')
     router.put('/profile', '#controllers/auth_controller.updateProfile')
     router.post('/logout', '#controllers/auth_controller.logout')
   }).use(middleware.auth())
-  
+
 }).prefix('/api/auth')
 
 // Property routes

@@ -11,11 +11,12 @@ const mailConfig = defineConfig({
    */
   mailers: {
     smtp: transports.smtp({
-      host: env.get('SMTP_HOST'),
-      port: env.get('SMTP_PORT'),
+      host: env.get('SMTP_HOST') || 'localhost',
+      port: env.get('SMTP_PORT') || 587,
       auth: {
-        user: env.get('SMTP_USERNAME'),
-        pass: env.get('SMTP_PASSWORD'),
+        type: 'login' as const,
+        user: env.get('SMTP_USERNAME') || '',
+        pass: env.get('SMTP_PASSWORD') || '',
       },
       secure: env.get('SMTP_SECURE', false), // Use TLS
       tls: {

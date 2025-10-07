@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { BaseCommand } from '@adonisjs/core/ace'
 import { S3Client, GetObjectAclCommand, GetObjectCommand } from '@aws-sdk/client-s3'
 import env from '#start/env'

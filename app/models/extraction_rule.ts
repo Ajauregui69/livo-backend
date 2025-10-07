@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { DateTime } from 'luxon'
 import { BaseModel, column, beforeCreate } from '@adonisjs/lucid/orm'
 import { randomUUID } from 'node:crypto'

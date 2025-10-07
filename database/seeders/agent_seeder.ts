@@ -131,6 +131,6 @@ export default class extends BaseSeeder {
       }
     ]
 
-    await Agent.createMany(agents)
+    await Agent.createMany(agents as any)
   }
 }

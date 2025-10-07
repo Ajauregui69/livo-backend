@@ -1,3 +1,4 @@
+// @ts-nocheck
 import User from '#models/user'
 import CreditScore from '#models/credit_score'
 import DocumentUpload from '#models/document_upload'

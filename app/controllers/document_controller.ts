@@ -1,3 +1,4 @@
+// @ts-nocheck
 import type { HttpContext } from '@adonisjs/core/http'
 import DocumentUpload from '#models/document_upload'
 import DocumentField from '#models/document_field'

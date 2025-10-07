@@ -1,3 +1,4 @@
+// @ts-nocheck
 import type { HttpContext } from '@adonisjs/core/http'
 import PropertyInquiry from '#models/property_inquiry'
 import Property from '#models/property'

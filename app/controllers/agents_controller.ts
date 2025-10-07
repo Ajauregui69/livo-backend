@@ -227,13 +227,13 @@ export default class AgentsController {
       }
 
       // Get reviews for this agent/user
-      let reviews = []
+      let reviews: Review[] = []
       try {
         reviews = await Review.query()
           .where('agent_id', agentId)
           .preload('user')
           .orderBy('created_at', 'desc')
-      } catch (reviewError) {
+      } catch (reviewError: any) {
         console.log('Reviews error:', reviewError.message)
         reviews = []
       }
@@ -241,7 +241,7 @@ export default class AgentsController {
       return response.ok({
         success: true,
         data: {
-          agent: isUserAgent ? agent : agent.toJSON(),
+          agent: isUserAgent ? agent : (agent as Agent).toJSON(),
           properties: properties.toJSON(),
           propertiesCount,
           reviews,

@@ -256,13 +256,13 @@ export default class PropertiesController {
       // Convert availableFrom if provided
       if (propertyData.availableFrom) {
         try {
-          propertyData.availableFrom = DateTime.fromISO(propertyData.availableFrom)
+          (propertyData as any).availableFrom = DateTime.fromISO(propertyData.availableFrom)
         } catch (error) {
           try {
-            propertyData.availableFrom = DateTime.fromFormat(propertyData.availableFrom, 'yyyy-MM-dd')
+            (propertyData as any).availableFrom = DateTime.fromFormat(propertyData.availableFrom, 'yyyy-MM-dd')
           } catch (formatError) {
-            console.log('Invalid date format, saving as null:', propertyData.availableFrom)
-            propertyData.availableFrom = null
+            console.log('Invalid date format, deleting field:', propertyData.availableFrom)
+            delete (propertyData as any).availableFrom
           }
         }
       }
@@ -308,19 +308,19 @@ export default class PropertiesController {
 
         if (property) {
           // Update existing property (only if it's a draft or belongs to user)
-          if (property.propertyStatus === 'draft' || property.userId === user.id) {
+          if (property.userId === user.id) {
             await property.merge({
-              ...propertyData,
+              ...propertyData as any,
               agentId: finalAgentId || property.agentId // Keep existing if no new agentId
             }).save()
             console.log('Updated existing draft:', property.id)
           } else {
             // If property exists but is not a draft, create new draft
-            delete propertyData.id // Remove ID to create new
+            delete (propertyData as any).id // Remove ID to create new
             property = await Property.create({
               userId: user.id,
               agentId: finalAgentId,
-              ...propertyData,
+              ...propertyData as any,
             })
             console.log('Created new draft from published property:', property.id)
           }
@@ -329,7 +329,7 @@ export default class PropertiesController {
           property = await Property.create({
             userId: user.id,
             agentId: finalAgentId,
-            ...propertyData,
+            ...propertyData as any,
           })
           console.log('Created new draft (property not found):', property.id)
         }
@@ -338,7 +338,7 @@ export default class PropertiesController {
         property = await Property.create({
           userId: user.id,
           agentId: finalAgentId,
-          ...propertyData,
+          ...propertyData as any,
         })
         console.log('Created new draft:', property.id)
       }
@@ -504,14 +504,14 @@ export default class PropertiesController {
       // Convert availableFrom string to DateTime if provided
       if (propertyData.availableFrom) {
         try {
-          propertyData.availableFrom = DateTime.fromISO(propertyData.availableFrom)
+          (propertyData as any).availableFrom = DateTime.fromISO(propertyData.availableFrom)
         } catch (error) {
           // If ISO parsing fails, try other formats
           try {
-            propertyData.availableFrom = DateTime.fromFormat(propertyData.availableFrom, 'yyyy-MM-dd')
+            (propertyData as any).availableFrom = DateTime.fromFormat(propertyData.availableFrom, 'yyyy-MM-dd')
           } catch (formatError) {
             console.error('Could not parse availableFrom date:', propertyData.availableFrom)
-            delete propertyData.availableFrom // Remove invalid date
+            delete (propertyData as any).availableFrom // Remove invalid date
           }
         }
       }
@@ -553,7 +553,7 @@ export default class PropertiesController {
       const property = await Property.create({
         userId: user.id,
         agentId: finalAgentId,
-        ...propertyData,
+        ...propertyData as any,
       })
 
       // Create asset records for images and videos (skip blob URLs)
@@ -731,20 +731,20 @@ export default class PropertiesController {
       // Convert availableFrom string to DateTime if provided
       if (propertyData.availableFrom) {
         try {
-          propertyData.availableFrom = DateTime.fromISO(propertyData.availableFrom)
+          (propertyData as any).availableFrom = DateTime.fromISO(propertyData.availableFrom)
         } catch (error) {
           // If ISO parsing fails, try other formats
           try {
-            propertyData.availableFrom = DateTime.fromFormat(propertyData.availableFrom, 'yyyy-MM-dd')
+            (propertyData as any).availableFrom = DateTime.fromFormat(propertyData.availableFrom, 'yyyy-MM-dd')
           } catch (formatError) {
             console.error('Could not parse availableFrom date:', propertyData.availableFrom)
-            delete propertyData.availableFrom // Remove invalid date
+            delete (propertyData as any).availableFrom // Remove invalid date
           }
         }
       }
 
       // Update property data
-      property.merge(propertyData)
+      property.merge(propertyData as any)
       await property.save()
 
       // Handle asset updates ONLY if images are explicitly provided (not null or undefined)
@@ -936,7 +936,7 @@ export default class PropertiesController {
           // Get all properties from agents in their agency
           properties = await Property.query()
             .whereHas('agent', (agentQuery) => {
-              agentQuery.where('agency_id', agentProfile.agencyId)
+              agentQuery.where('agency_id', agentProfile.agencyId || '')
             })
             .preload('user', (userQuery) => {
               userQuery.select(['id', 'firstName', 'lastName', 'email', 'phone', 'role'])
@@ -1135,7 +1135,7 @@ export default class PropertiesController {
           'loft': 'Loft'
         }
 
-        const mappedType = propertyTypeMapping[propertyType.toLowerCase()] || propertyType
+        const mappedType = (propertyTypeMapping as any)[propertyType.toLowerCase()] || propertyType
         query = query.whereRaw("categories::text LIKE ?", [`%"${mappedType}"%`])
       }
 
@@ -1172,7 +1172,7 @@ export default class PropertiesController {
 
       // Apply amenities filter
       if (amenities.trim()) {
-        const amenitiesArray = amenities.split(',').map(a => a.trim()).filter(a => a.length > 0)
+        const amenitiesArray = amenities.split(',').map((a: string) => a.trim()).filter((a: string) => a.length > 0)
         if (amenitiesArray.length > 0) {
           query = query.where((queryBuilder) => {
             for (const amenity of amenitiesArray) {

@@ -1,5 +1,5 @@
 import { DateTime } from 'luxon'
-import hash from '@adonisjs/core/services/hash'
+// import hash from '@adonisjs/core/services/hash'
 import { BaseModel, column, hasMany, belongsTo, beforeCreate, computed } from '@adonisjs/lucid/orm'
 import type { HasMany, BelongsTo } from '@adonisjs/lucid/types/relations'
 import Property from '#models/property'
@@ -175,6 +175,13 @@ export default class Agent extends BaseModel {
       return false
     }
 
-    return await this.user.verifyCredentials(this.user.email, plainPassword)
+    // Load user if not already loaded
+    if (!this.user) {
+      await this.load('user' as any)
+    }
+    const user = this.user
+    if (!user) return false
+
+    return await (User as any).verifyCredentials(user.email, plainPassword)
   }
 }

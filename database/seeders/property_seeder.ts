@@ -338,7 +338,7 @@ export default class extends BaseSeeder {
     await Property.query().where('user_id', userId).delete()
 
     // Insert new properties
-    await Property.createMany(properties)
+    await Property.createMany(properties as any)
 
     // Create some sample assets (images) for the first few properties
     const sampleAssets = [

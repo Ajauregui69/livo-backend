@@ -1,7 +1,7 @@
 import type { HttpContext } from '@adonisjs/core/http'
 import { DateTime } from 'luxon'
 import User from '#models/user'
-import Agent from '#models/agent'
+// import Agent from '#models/agent'
 // import Agency from '#models/agency'
 import EmailVerificationToken from '#models/email_verification_token'
 import VerifyEmailMail from '#mails/verify_email_mail'
@@ -9,6 +9,7 @@ import mail from '@adonisjs/mail/services/main'
 import SendGridService from '#services/sendgrid_service'
 import { loginValidator, registerValidator } from '#validators/auth'
 import { updateProfileValidator } from '#validators/update_profile'
+import db from '@adonisjs/lucid/services/db'
 
 export default class AuthController {
   /**
@@ -188,9 +189,12 @@ export default class AuthController {
           token: token.value!.release()
         })
       }
-      
-      // If no user found, check if there's an agent that needs migration
-      console.log('🔍 No user found, checking if agent exists for migration...')
+
+      // Legacy: Agent migration code removed - all agents must have user records now
+      console.log('❌ No user found with email:', email)
+      throw new Error('Invalid credentials')
+
+      /* LEGACY CODE - COMMENTED OUT
       const orphanAgent = await Agent.findBy('email', email)
       
       if (orphanAgent) {
@@ -256,9 +260,7 @@ export default class AuthController {
           })
         }
       }
-      
-      console.log('❌ No user or agent found with email:', email)
-      throw new Error('Invalid credentials')
+      */
     } catch (error) {
       console.log('❌ LOGIN ERROR:', error.message)
       console.log('🔧 Error details:', error)
@@ -491,7 +493,7 @@ export default class AuthController {
    */
   async resendVerificationEmail({ request, response }: HttpContext) {
     const { email } = request.only(['email'])
-    
+
     if (!email) {
       return response.status(400).json({
         message: 'Email requerido'
@@ -500,7 +502,7 @@ export default class AuthController {
 
     try {
       const user = await User.findBy('email', email)
-      
+
       if (!user) {
         return response.status(404).json({
           message: 'Usuario no encontrado'
@@ -521,7 +523,7 @@ export default class AuthController {
 
       // Create new verification token
       const verificationToken = await EmailVerificationToken.createForUser(user.id, user.email)
-      
+
       // Send verification email
       await mail.send(new VerifyEmailMail(user, verificationToken.token))
 
@@ -531,6 +533,159 @@ export default class AuthController {
     } catch (error) {
       return response.status(500).json({
         message: 'Error al enviar email de verificación',
+        error: error.message
+      })
+    }
+  }
+
+  /**
+   * Request password reset
+   */
+  async forgotPassword({ request, response }: HttpContext) {
+    const { email } = request.only(['email'])
+
+    if (!email) {
+      return response.status(400).json({
+        message: 'Email requerido'
+      })
+    }
+
+    try {
+      const user = await User.findBy('email', email)
+
+      // Always return success to prevent email enumeration
+      if (!user) {
+        return response.json({
+          message: 'Si el email existe en nuestro sistema, recibirás un enlace para restablecer tu contraseña.'
+        })
+      }
+
+      // Invalidate existing password reset tokens for this user
+      await EmailVerificationToken.query()
+        .where('user_id', user.id)
+        .where('type', 'password_reset')
+        .where('used', false)
+        .update({ used: true })
+
+      // Create new password reset token (expires in 1 hour)
+      const resetToken = await EmailVerificationToken.create({
+        userId: user.id,
+        email: user.email,
+        token: Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15),
+        type: 'password_reset',
+        expiresAt: DateTime.now().plus({ hours: 1 }),
+        used: false
+      })
+
+      console.log('🔑 Token creado:', {
+        token: resetToken.token,
+        userId: resetToken.userId,
+        type: resetToken.type,
+        expiresAt: resetToken.expiresAt,
+        used: resetToken.used
+      })
+
+      // Send password reset email using SendGrid
+      try {
+        await SendGridService.sendPasswordResetEmail(
+          user.email,
+          user.firstName,
+          resetToken.token
+        )
+        console.log('📧 Email enviado a:', user.email)
+      } catch (emailError) {
+        console.error('Error sending password reset email:', emailError)
+        // In development, continue anyway
+        if (process.env.NODE_ENV !== 'development') {
+          return response.status(500).json({
+            message: 'Error al enviar el correo electrónico. Por favor, intenta nuevamente.'
+          })
+        }
+      }
+
+      return response.json({
+        message: 'Si el email existe en nuestro sistema, recibirás un enlace para restablecer tu contraseña.'
+      })
+    } catch (error) {
+      console.error('Forgot password error:', error)
+      return response.status(500).json({
+        message: 'Error al procesar la solicitud',
+        error: error.message
+      })
+    }
+  }
+
+  /**
+   * Reset password with token
+   */
+  async resetPassword({ request, response }: HttpContext) {
+    const { token, password } = request.only(['token', 'password'])
+
+    if (!token || !password) {
+      return response.status(400).json({
+        message: 'Token y nueva contraseña son requeridos'
+      })
+    }
+
+    if (password.length < 8) {
+      return response.status(400).json({
+        message: 'La contraseña debe tener al menos 8 caracteres'
+      })
+    }
+
+    try {
+      // Find password reset token
+      const resetToken = await EmailVerificationToken.query()
+        .where('token', token)
+        .where('type', 'password_reset')
+        .where('used', false)
+        .first()
+
+      console.log('Token buscado:', token)
+      console.log('Token encontrado:', resetToken?.toJSON())
+      console.log('Hora actual:', DateTime.now().toISO())
+
+      if (!resetToken) {
+        return response.status(400).json({
+          message: 'Token inválido o expirado. Por favor, solicita un nuevo enlace de restablecimiento.'
+        })
+      }
+
+      // Check if token is expired
+      if (resetToken.expiresAt && DateTime.fromJSDate(resetToken.expiresAt) < DateTime.now()) {
+        return response.status(400).json({
+          message: 'Token expirado. Por favor, solicita un nuevo enlace de restablecimiento.'
+        })
+      }
+
+      const user = await User.find(resetToken.userId)
+
+      if (!user) {
+        return response.status(404).json({
+          message: 'Usuario no encontrado'
+        })
+      }
+
+      // Update password
+      user.password = password
+      await user.save()
+
+      // Mark token as used
+      resetToken.used = true
+      await resetToken.save()
+
+      // Invalidate all access tokens for security
+      await db.from('auth_access_tokens')
+        .where('tokenable_id', user.id)
+        .delete()
+
+      return response.json({
+        message: 'Contraseña restablecida exitosamente. Todas tus sesiones activas han sido cerradas por seguridad.'
+      })
+    } catch (error) {
+      console.error('Reset password error:', error)
+      return response.status(500).json({
+        message: 'Error al restablecer la contraseña',
         error: error.message
       })
     }
