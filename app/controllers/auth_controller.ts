@@ -594,13 +594,10 @@ export default class AuthController {
         )
         console.log('📧 Email enviado a:', user.email)
       } catch (emailError) {
-        console.error('Error sending password reset email:', emailError)
-        // In development, continue anyway
-        if (process.env.NODE_ENV !== 'development') {
-          return response.status(500).json({
-            message: 'Error al enviar el correo electrónico. Por favor, intenta nuevamente.'
-          })
-        }
+        console.error('❌ Error sending password reset email:', emailError)
+        console.error('❌ Email error details:', emailError.message, emailError.stack)
+        // Continue anyway to prevent email enumeration
+        // Token is created and saved in database, user can potentially use it if we add manual token entry
       }
 
       return response.json({
@@ -668,6 +665,14 @@ export default class AuthController {
 
       // Update password
       user.password = password
+
+      // If user is pending (not verified), activate them now
+      if (user.status === 'pending') {
+        user.status = 'active'
+        user.emailVerifiedAt = DateTime.now()
+        console.log('✅ User activated during password reset:', user.email)
+      }
+
       await user.save()
 
       // Mark token as used
