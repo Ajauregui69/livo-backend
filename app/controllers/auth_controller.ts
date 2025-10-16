@@ -667,6 +667,7 @@ export default class AuthController {
       user.password = password
 
       // If user is pending (not verified), activate them now
+      console.log('🔍 User status before reset:', user.status, 'emailVerifiedAt:', user.emailVerifiedAt)
       if (user.status === 'pending') {
         user.status = 'active'
         user.emailVerifiedAt = DateTime.now()
@@ -674,6 +675,7 @@ export default class AuthController {
       }
 
       await user.save()
+      console.log('💾 User saved. New status:', user.status, 'emailVerifiedAt:', user.emailVerifiedAt)
 
       // Mark token as used
       resetToken.used = true
