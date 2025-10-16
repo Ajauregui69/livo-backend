@@ -152,9 +152,6 @@ export default class LeadsController {
       const allBuyersCount = await User.query().where('role', 'comprador').count('* as total')
       const totalLeads = Number(allBuyersCount[0].$extras.total)
 
-      const livoDirecto = buyersWithData.filter(b => b.type === 'LIVO Directo').length
-      const livoRenta = buyersWithData.filter(b => b.type === 'LIVO Renta').length
-
       // Count prequalified from all buyers
       const prequalifiedCount = await User.query()
         .where('role', 'comprador')
@@ -243,10 +240,10 @@ export default class LeadsController {
           createdAt: buyer.createdAt
         },
         creditScore: latestCreditScore ? {
-          internalScore: latestCreditScore.internalScore,
+          creditScore: latestCreditScore.creditScore,
           riskLevel: latestCreditScore.riskLevel,
-          maxLoanAmount: latestCreditScore.maxLoanAmount,
-          suggestedDownPayment: latestCreditScore.suggestedDownPayment,
+          maxBudget: latestCreditScore.maxBudget,
+          estimatedIncome: latestCreditScore.estimatedIncome,
           createdAt: latestCreditScore.createdAt
         } : null,
         documents: buyer.documentUploads.map(doc => ({
