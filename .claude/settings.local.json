@@ -49,7 +49,10 @@
       "Bash(git for-each-ref:*)",
       "Bash(git update-ref:*)",
       "Bash(git reflog:*)",
-      "Bash(git gc:*)"
+      "Bash(git gc:*)",
+      "WebSearch",
+      "WebFetch(domain:platform.moonshot.cn)",
+      "Bash(pgrep:*)"
     ],
     "deny": []
   }

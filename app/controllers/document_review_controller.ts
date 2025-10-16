@@ -419,9 +419,12 @@ export default class DocumentReviewController {
         .preload('review')
         .orderBy('created_at', 'desc')
 
-      const documentsWithUrls = documents.map((doc) => {
-        // Usar path-style URL porque el bucket tiene punto en el nombre
-        const directUrl = `https://s3.us-east-2.amazonaws.com/${s3Service.getBucketName()}/${doc.filePath}`
+      const documentsWithUrls = await Promise.all(documents.map(async (doc) => {
+        // Generar URL firmada de S3 válida por 1 hora
+        const signedUrl = await s3Service.getSignedUrl(doc.filePath, 3600)
+
+        // También proporcionar URL del proxy del backend como fallback
+        const proxyUrl = `/api/ai/documents/${doc.id}/view`
 
         return {
           id: doc.id,
@@ -434,11 +437,12 @@ export default class DocumentReviewController {
           confidenceScore: doc.review?.confidenceScore || null,
           needsReview: doc.review?.needsReview || false,
           reviewId: doc.review?.id || null,
-          downloadUrl: directUrl,
+          downloadUrl: signedUrl, // URL firmada de S3
+          proxyUrl: proxyUrl, // URL del proxy del backend
           filePath: doc.filePath,
           extractedData: doc.extractedData
         }
-      })
+      }))
 
       return response.json({
         documents: documentsWithUrls

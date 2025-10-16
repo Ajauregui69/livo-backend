@@ -462,4 +462,75 @@ export default class DocumentController {
       })
     }
   }
+
+  /**
+   * View document through backend proxy (avoids CORS issues)
+   */
+  async viewDocument({ auth, params, response }: HttpContext) {
+    const user = auth.user!
+    const { documentId } = params
+
+    try {
+      // Admin/agency_admin pueden ver cualquier documento
+      // Usuarios normales solo pueden ver sus propios documentos
+      const query = DocumentUpload.query().where('id', documentId)
+
+      if (!['admin', 'agency_admin'].includes(user.role)) {
+        query.where('user_id', user.id)
+      }
+
+      const document = await query.first()
+
+      if (!document) {
+        return response.status(404).json({
+          message: 'Documento no encontrado'
+        })
+      }
+
+      // Obtener el archivo de S3
+      const { s3Service } = await import('#services/s3_service')
+      const { GetObjectCommand } = await import('@aws-sdk/client-s3')
+
+      const command = new GetObjectCommand({
+        Bucket: s3Service.getBucketName(),
+        Key: document.filePath
+      })
+
+      const s3Response = await s3Service.s3Client.send(command)
+
+      // Determinar el content type basado en la extensión del archivo
+      const ext = document.fileName.split('.').pop()?.toLowerCase()
+      const contentTypes: Record<string, string> = {
+        'pdf': 'application/pdf',
+        'jpg': 'image/jpeg',
+        'jpeg': 'image/jpeg',
+        'png': 'image/png',
+        'gif': 'image/gif',
+        'webp': 'image/webp'
+      }
+      const contentType = contentTypes[ext || ''] || 'application/octet-stream'
+
+      // Configurar headers para evitar CORS
+      response.header('Content-Type', contentType)
+      response.header('Content-Disposition', `inline; filename="${document.fileName}"`)
+      response.header('Access-Control-Allow-Origin', '*')
+      response.header('Access-Control-Allow-Methods', 'GET, OPTIONS')
+      response.header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+
+      // Stream el contenido del archivo
+      if (s3Response.Body) {
+        return response.stream(s3Response.Body as any)
+      } else {
+        return response.status(404).json({
+          message: 'Contenido del documento no disponible'
+        })
+      }
+    } catch (error) {
+      console.error('Error viewing document:', error)
+      return response.status(500).json({
+        message: 'Error al ver el documento',
+        error: error.message
+      })
+    }
+  }
 }

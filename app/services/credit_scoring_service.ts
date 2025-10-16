@@ -341,19 +341,82 @@ class CreditScoringService {
   }
 
   /**
-   * Crea o actualiza el análisis de crédito del usuario
+   * Crea o actualiza el análisis de crédito del usuario usando MoonshotAI
    */
   async createCreditAnalysis(userId: string): Promise<CreditAnalysis> {
-    const scoreResult = await this.calculateCreditScore(userId)
+    console.log(`🔍 Iniciando análisis crediticio para usuario ${userId}`)
 
-    // Verificar si ya existe un análisis reciente
+    // 1. Obtener documentos procesados del usuario
+    const documents = await DocumentUpload.query()
+      .where('user_id', userId)
+      .where('status', 'processed')
+
+    if (documents.length === 0) {
+      throw new Error('No hay documentos procesados para analizar')
+    }
+
+    // 2. Intentar análisis con MoonshotAI primero
+    let moonshotAnalysisResult = null
+    let useMoonshot = true
+
+    try {
+      console.log('🤖 Analizando perfil crediticio con MoonshotAI...')
+      const { moonshotAIService } = await import('#services/moonshot_ai_service')
+
+      // Preparar datos de documentos para MoonshotAI
+      const documentsData = documents.map(doc => ({
+        type: doc.documentType,
+        extractedData: doc.extractedData,
+        moonshotAnalysis: doc.extractedData?._moonshotAnalysis || null
+      }))
+
+      moonshotAnalysisResult = await moonshotAIService.analyzeCreditProfile(documentsData)
+      console.log(`✨ Análisis de MoonshotAI completado - Score: ${moonshotAnalysisResult.internalScore}`)
+    } catch (moonshotError) {
+      console.warn('⚠️ Error con MoonshotAI, usando método tradicional:', moonshotError.message)
+      useMoonshot = false
+    }
+
+    let scoreResult: CreditScoreResult
+
+    if (useMoonshot && moonshotAnalysisResult) {
+      // Usar resultados de MoonshotAI
+      scoreResult = {
+        internalScore: moonshotAnalysisResult.internalScore,
+        riskLevel: moonshotAnalysisResult.riskLevel,
+        maxLoanAmount: moonshotAnalysisResult.maxLoanAmount,
+        suggestedDownPayment: moonshotAnalysisResult.suggestedDownPayment,
+        recommendations: moonshotAnalysisResult.recommendations,
+        scoringFactors: {
+          income: 0,
+          employmentStability: 0,
+          bankingHistory: 0,
+          debtLevel: 0
+        },
+        analysisDetails: {
+          method: 'moonshot_ai',
+          detailedAnalysis: moonshotAnalysisResult.detailedAnalysis,
+          strengths: moonshotAnalysisResult.strengths,
+          weaknesses: moonshotAnalysisResult.weaknesses,
+          moonshotAnalysis: moonshotAnalysisResult.moonshotAnalysis,
+          documentsAnalyzed: documents.length,
+          calculatedAt: DateTime.now().toISO()
+        }
+      }
+    } else {
+      // Fallback: usar método tradicional
+      console.log('📊 Usando método tradicional de scoring...')
+      scoreResult = await this.calculateCreditScore(userId)
+    }
+
+    // 3. Verificar si ya existe un análisis reciente
     const existingAnalysis = await CreditAnalysis.query()
       .where('user_id', userId)
       .where('status', 'completed')
       .orderBy('created_at', 'desc')
       .first()
 
-    // Si existe uno reciente (menos de 30 días), actualizarlo en lugar de crear uno nuevo
+    // Si existe uno reciente (menos de 30 días), actualizarlo
     if (existingAnalysis && existingAnalysis.createdAt > DateTime.now().minus({ days: 30 })) {
       existingAnalysis.internalScore = scoreResult.internalScore
       existingAnalysis.riskLevel = scoreResult.riskLevel
@@ -361,12 +424,15 @@ class CreditScoringService {
       existingAnalysis.suggestedDownPayment = scoreResult.suggestedDownPayment
       existingAnalysis.recommendations = scoreResult.recommendations.join('\n')
       existingAnalysis.analysisDetails = scoreResult.analysisDetails
+      existingAnalysis.moonshotAnalysis = useMoonshot ? moonshotAnalysisResult : null
       existingAnalysis.processedAt = DateTime.now()
       await existingAnalysis.save()
+
+      console.log(`✅ Análisis actualizado - Score: ${existingAnalysis.internalScore}`)
       return existingAnalysis
     }
 
-    // Crear nuevo análisis
+    // 4. Crear nuevo análisis
     const analysis = await CreditAnalysis.create({
       userId,
       internalScore: scoreResult.internalScore,
@@ -376,10 +442,12 @@ class CreditScoringService {
       recommendations: scoreResult.recommendations.join('\n'),
       status: 'completed',
       analysisDetails: scoreResult.analysisDetails,
+      moonshotAnalysis: useMoonshot ? moonshotAnalysisResult : null,
       processedAt: DateTime.now(),
       expiresAt: DateTime.now().plus({ days: 30 })
     })
 
+    console.log(`✅ Análisis creado - Score: ${analysis.internalScore}, Método: ${useMoonshot ? 'MoonshotAI' : 'Tradicional'}`)
     return analysis
   }
 }

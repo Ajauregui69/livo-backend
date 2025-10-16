@@ -20,11 +20,11 @@ interface ExtractionResult {
 
 class DocumentExtractionService {
   /**
-   * Procesa un documento y extrae información usando OCR + Regex
+   * Procesa un documento y extrae información usando MoonshotAI + OCR + Regex
    */
   async processDocument(documentUpload: DocumentUpload): Promise<void> {
     try {
-      console.log(`🔍 Procesando documento ${documentUpload.id} con OCR...`)
+      console.log(`🔍 Procesando documento ${documentUpload.id} con OCR y MoonshotAI...`)
 
       // 1. Obtener el contenido del documento desde S3
       const documentText = await this.getDocumentText(documentUpload)
@@ -42,66 +42,111 @@ class DocumentExtractionService {
         return
       }
 
-      // 2. Obtener reglas de extracción para este tipo de documento
-      const rules = await ExtractionRule.query()
-        .where('document_type', documentUpload.documentType)
-        .where('is_active', true)
-        .orderBy('priority', 'desc')
+      // 2. Intentar análisis con MoonshotAI primero
+      let moonshotResult = null
+      let useMoonshot = true
 
-      if (rules.length === 0) {
-        await this.createReviewForManualProcessing(documentUpload, documentText)
-        return
+      try {
+        console.log('🤖 Analizando con MoonshotAI...')
+        const { moonshotAIService } = await import('#services/moonshot_ai_service')
+        moonshotResult = await moonshotAIService.analyzeDocument(
+          documentUpload.documentType,
+          documentText
+        )
+        console.log(`✨ MoonshotAI completado - Confianza: ${moonshotResult.confidence}%`)
+      } catch (moonshotError) {
+        console.warn('⚠️ Error con MoonshotAI, usando método tradicional:', moonshotError.message)
+        useMoonshot = false
       }
 
-      // 3. Extraer datos usando las reglas
-      const extractionResult = await this.extractDataUsingRules(documentText, rules)
+      let extractedData: Record<string, any>
+      let confidence: number
+      let needsReview: boolean
+      let processingNotes: string
 
-      console.log(`📊 Campos extraídos: ${extractionResult.fields.length}`)
+      if (useMoonshot && moonshotResult) {
+        // Usar resultados de MoonshotAI
+        extractedData = moonshotResult.extractedData
+        confidence = moonshotResult.confidence
+        needsReview = confidence < 75 // Umbral más alto para IA
 
-      // 4. Guardar los campos extraídos
-      const documentReview = await DocumentReview.create({
-        documentUploadId: documentUpload.id,
-        status: extractionResult.needsReview ? 'pending' : 'completed',
-        confidenceScore: extractionResult.overallConfidence,
-        extractionNotes: extractionResult.extractionNotes.join('\n'),
-        autoExtractedData: this.fieldsToObject(extractionResult.fields)
-      })
+        // Agregar el análisis de MoonshotAI
+        extractedData._moonshotAnalysis = {
+          analysis: moonshotResult.analysis,
+          recommendations: moonshotResult.recommendations,
+          haviScore: moonshotResult.haviScore,
+          riskLevel: moonshotResult.riskLevel
+        }
 
-      // 5. Crear registros de campos
-      for (const field of extractionResult.fields) {
-        await DocumentField.create({
+        processingNotes = needsReview
+          ? `Análisis con MoonshotAI (confianza ${confidence}%) - Requiere revisión. ${moonshotResult.analysis}`
+          : `Análisis con MoonshotAI completado (confianza ${confidence}%). ${moonshotResult.analysis}`
+      } else {
+        // Fallback: usar método tradicional con reglas
+        console.log('📋 Usando método tradicional con reglas...')
+        const rules = await ExtractionRule.query()
+          .where('document_type', documentUpload.documentType)
+          .where('is_active', true)
+          .orderBy('priority', 'desc')
+
+        if (rules.length === 0) {
+          await this.createReviewForManualProcessing(documentUpload, documentText)
+          return
+        }
+
+        const extractionResult = await this.extractDataUsingRules(documentText, rules)
+        console.log(`📊 Campos extraídos: ${extractionResult.fields.length}`)
+
+        extractedData = this.fieldsToObject(extractionResult.fields)
+        confidence = extractionResult.overallConfidence
+        needsReview = extractionResult.needsReview
+
+        // Agregar análisis tradicional
+        const traditionalAnalysis = this.generateDocumentAnalysis(
+          documentUpload.documentType,
+          extractedData
+        )
+        extractedData._analysis = traditionalAnalysis
+
+        processingNotes = needsReview
+          ? `Extracción tradicional (confianza ${confidence}%) - Requiere revisión. ${traditionalAnalysis.summary}`
+          : `Extracción tradicional completada (confianza ${confidence}%). ${traditionalAnalysis.summary}`
+
+        // Crear registros de campos para el método tradicional
+        const documentReview = await DocumentReview.create({
           documentUploadId: documentUpload.id,
-          documentReviewId: documentReview.id,
-          fieldName: field.fieldName,
-          fieldType: field.fieldType,
-          extractedValue: field.extractedValue,
-          confidence: field.confidence,
-          extractionMethod: field.extractionMethod,
-          wasCorrected: false
+          status: needsReview ? 'pending' : 'completed',
+          confidenceScore: confidence,
+          extractionNotes: extractionResult.extractionNotes.join('\n'),
+          autoExtractedData: extractedData
         })
+
+        for (const field of extractionResult.fields) {
+          await DocumentField.create({
+            documentUploadId: documentUpload.id,
+            documentReviewId: documentReview.id,
+            fieldName: field.fieldName,
+            fieldType: field.fieldType,
+            extractedValue: field.extractedValue,
+            confidence: field.confidence,
+            extractionMethod: field.extractionMethod,
+            wasCorrected: false
+          })
+        }
       }
 
-      // 6. Calcular análisis automático y puntos HAVI
-      const analysis = this.generateDocumentAnalysis(
-        documentUpload.documentType,
-        this.fieldsToObject(extractionResult.fields)
-      )
-
-      // 7. Actualizar el documento con los datos extraídos y análisis
+      // Actualizar el documento con los datos extraídos
       const { DateTime } = await import('luxon')
 
-      documentUpload.status = extractionResult.needsReview ? 'processing' : 'processed'
-      documentUpload.extractedData = {
-        ...this.fieldsToObject(extractionResult.fields),
-        _analysis: analysis
-      }
+      documentUpload.status = needsReview ? 'processing' : 'processed'
+      documentUpload.extractedData = extractedData
       documentUpload.processedAt = DateTime.now()
-      documentUpload.processingNotes = extractionResult.needsReview
-        ? `Extracción automática completada - Requiere revisión humana. ${analysis.summary}`
-        : `Extracción automática completada exitosamente. ${analysis.summary}`
+      documentUpload.processingNotes = processingNotes
       await documentUpload.save()
 
-      // 8. Recalcular score crediticio del usuario
+      console.log(`✅ Documento procesado - Status: ${documentUpload.status}`)
+
+      // Recalcular score crediticio del usuario
       try {
         const { creditScoreCalculator } = await import('#services/credit_score_calculator')
         await creditScoreCalculator.updateCreditScore(documentUpload.userId)

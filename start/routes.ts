@@ -163,4 +163,11 @@ router.group(() => {
   router.get('/users', '#controllers/document_review_controller.getUsers')
   router.get('/users/:userId/documents', '#controllers/document_review_controller.getUserDocuments')
   router.get('/users/:userId/documents/download-zip', '#controllers/document_review_controller.downloadUserDocumentsZip')
+
+  // Document proxy to avoid CORS issues
+  router.get('/documents/:documentId/view', '#controllers/document_controller.viewDocument')
+
+  // Leads management routes (admin/agency_admin only)
+  router.get('/leads', '#controllers/leads_controller.getBuyerLeads')
+  router.get('/leads/:leadId', '#controllers/leads_controller.getLeadDetails')
 }).prefix('/api/ai').use(middleware.auth())
